@@ -5,7 +5,7 @@ import pandas as pd
 from db.database import engine
 from utils.excel_parser import read_excel
 from services.setup_pipeline import run_setup_pipeline
-
+from io import BytesIO
 router = APIRouter(prefix="/setup")
 
 
@@ -16,7 +16,8 @@ router = APIRouter(prefix="/setup")
 async def upload_components(file: UploadFile):
 
     try:
-        df = read_excel(file)
+        contents = await file.read()              # read uploaded file
+        df = pd.read_excel(BytesIO(contents))     # load into pandas
 
         with engine.begin() as conn:
             df.to_sql(
@@ -39,7 +40,8 @@ async def upload_components(file: UploadFile):
 async def upload_component_specs(file: UploadFile):
 
     try:
-        df = read_excel(file)
+        contents = await file.read()              # read uploaded file
+        df = pd.read_excel(BytesIO(contents))     # load into pandas
 
         with engine.begin() as conn:
             df.to_sql(
@@ -58,11 +60,14 @@ async def upload_component_specs(file: UploadFile):
 # ================================
 # Upload Suppliers
 # ================================
+
+
 @router.post("/suppliers")
 async def upload_suppliers(file: UploadFile):
 
     try:
-        df = read_excel(file)
+        contents = await file.read()              # read uploaded file
+        df = pd.read_excel(BytesIO(contents))     # load into pandas
 
         with engine.begin() as conn:
             df.to_sql(
@@ -77,7 +82,6 @@ async def upload_suppliers(file: UploadFile):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
 # ================================
 # Upload Supplier Components
 # ================================
@@ -85,7 +89,8 @@ async def upload_suppliers(file: UploadFile):
 async def upload_supplier_components(file: UploadFile):
 
     try:
-        df = read_excel(file)
+        contents = await file.read()              # read uploaded file
+        df = pd.read_excel(BytesIO(contents))     # load into pandas
 
         with engine.begin() as conn:
             df.to_sql(
@@ -108,7 +113,8 @@ async def upload_supplier_components(file: UploadFile):
 async def upload_inventory(file: UploadFile):
 
     try:
-        df = read_excel(file)
+        contents = await file.read()              # read uploaded file
+        df = pd.read_excel(BytesIO(contents))     # load into pandas
 
         with engine.begin() as conn:
             df.to_sql(
