@@ -43,4 +43,4 @@ def get_component_details(component_id):
     return {
         "component_name": component_name,
         "suppliers": suppliers
-    }
+    } 

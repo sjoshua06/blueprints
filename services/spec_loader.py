@@ -8,6 +8,7 @@ def load_component_specs():
     SELECT
         c.component_id,
         c.component_type,
+        c.subcategory,
         cs.spec_name,
         cs.spec_value
     FROM components c

@@ -1,9 +1,13 @@
 import pandas as pd
+from io import BytesIO
 
-def parse_bom(file):
+async def parse_bom(file):
 
-    df = pd.read_excel(file.file)
+    contents = await file.read()   # ✅ read file as bytes
 
-    df.columns = df.columns.str.lower()
+    df = pd.read_excel(BytesIO(contents))   # ✅ FIX
 
+    # normalize column names (VERY IMPORTANT)
+    df.columns = df.columns.str.strip().str.lower().str.replace(" ", "_")
+    
     return df

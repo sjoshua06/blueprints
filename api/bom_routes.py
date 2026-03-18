@@ -13,9 +13,9 @@ async def analyze_bom_file(
     receipt_file: UploadFile
 ):
 
-    bom_df = parse_bom(bom_file)
+    bom_df = await parse_bom(bom_file)
 
-    receipts_df = parse_receipts(receipt_file)
+    receipts_df = await parse_receipts(receipt_file)
 
     result = analyze_bom(bom_df, receipts_df)
 
