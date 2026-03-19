@@ -101,3 +101,30 @@ export function predictRisk(data) {
     body: JSON.stringify(data),
   });
 }
+
+/* ── Internal Risk (Inventory Risk) ───────────────────────────── */
+
+export function getInternalRiskPredictions() {
+  return request("/api/risk/predictions");
+}
+
+export function getInternalRiskByComponent(componentId) {
+  return request(`/api/risk/predictions/${componentId}`);
+}
+
+export function getInternalHighRisk() {
+  return request("/api/risk/high-risk");
+}
+
+export function getInternalRiskSummary() {
+  return request("/api/risk/summary");
+}
+
+export function runProphetForecast() {
+  return request("/api/risk/run-prophet", { method: "POST" });
+}
+
+export function getProphetForecastData(componentId) {
+  return request(`/api/risk/forecast/${componentId}`);
+}
+

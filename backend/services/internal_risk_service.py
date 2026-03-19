@@ -10,9 +10,25 @@ def clean(val, default=0):
     except:
         return default
 
+
+def _build_component_name_map(supabase):
+    """Fetch all components and return a {component_id: component_name} dict."""
+    rows = supabase.table("components").select("component_id,component_name").execute().data
+    return {r["component_id"]: r["component_name"] for r in rows}
+
+
+def _enrich(prediction, name_map):
+    """Add component_name to a prediction dict based on component_id."""
+    enriched = dict(prediction)
+    cid = enriched.get("component_id")
+    enriched["component_name"] = name_map.get(cid, f"Unknown (ID {cid})")
+    return enriched
+
+
 def get_all_predictions(supabase):
     response = supabase.table("internal_risk_predictions").select("*").execute()
-    return response.data
+    name_map = _build_component_name_map(supabase)
+    return [_enrich(r, name_map) for r in response.data]
 
 def get_prediction_by_component(supabase, component_id: int):
     response = (
@@ -21,7 +37,10 @@ def get_prediction_by_component(supabase, component_id: int):
         .eq("component_id", component_id)
         .execute()
     )
-    return response.data[0] if response.data else None
+    if not response.data:
+        return None
+    name_map = _build_component_name_map(supabase)
+    return _enrich(response.data[0], name_map)
 
 def get_high_risk_components(supabase):
     response = (
@@ -31,7 +50,8 @@ def get_high_risk_components(supabase):
         .order("days_until_stockout", desc=False)
         .execute()
     )
-    return response.data
+    name_map = _build_component_name_map(supabase)
+    return [_enrich(r, name_map) for r in response.data]
 
 def get_risk_summary(supabase):
     data   = supabase.table("internal_risk_predictions").select("*").execute().data
