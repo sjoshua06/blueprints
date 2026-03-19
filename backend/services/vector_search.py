@@ -1,48 +1,40 @@
 import faiss
 import numpy as np
-import io
-import tempfile
 import os
-from supabase import create_client
-from dotenv import load_dotenv
 
-load_dotenv()
-supabase = create_client(os.environ.get("SUPABASE_URL"), os.environ.get("SUPABASE_SERVICE_KEY"))
-BUCKET = "faiss-indexes"
+# Local Storage Path
+INDEX_DIR = os.path.join(os.path.dirname(__file__), "indexes")
 
-def search_similar(subcategory, vector, user_id: str, k=5):
-    safe = subcategory.lower().replace(" ", "_")
-
-    # ── download index bytes from Supabase Storage ──
-    try:
-        index_bytes = supabase.storage.from_(BUCKET).download(f"{user_id}/{safe}.index")
-        ids_bytes   = supabase.storage.from_(BUCKET).download(f"{user_id}/{safe}_ids.npy")
-    except Exception as e:
-        print(f"No FAISS index found for subcategory: {subcategory} (user: {user_id})")
+def search_similar(query_vector, subcategory, user_id=None, k=5):
+    """
+    Searches for similar components using local FAISS indexes.
+    """
+    safe_name = subcategory.lower().replace(" ", "_").replace("/", "_")
+    
+    index_path = os.path.join(INDEX_DIR, f"{safe_name}.index")
+    ids_path   = os.path.join(INDEX_DIR, f"{safe_name}_ids.npy")
+    
+    # Check if files exist locally
+    if not (os.path.exists(index_path) and os.path.exists(ids_path)):
         return []
-
-    # ── load index from bytes via temp file ──
-    with tempfile.NamedTemporaryFile(suffix=".index", delete=False) as tmp:
-        tmp.write(index_bytes)
-        tmp_path = tmp.name
-
-    index = faiss.read_index(tmp_path)
-    os.unlink(tmp_path)
-
-    ids = np.load(io.BytesIO(ids_bytes))
-
-    query = np.array([vector]).astype("float32")
-    distances, indices = index.search(query, min(k + 1, index.ntotal))
-
-    results = []
-    for dist, idx in zip(distances[0], indices[0]):
-        if idx < 0:
-            continue
-        cid = int(ids[idx])
-        if dist == 0.0 and len(results) == 0:
-            continue
-        results.append({"component_id": cid, "distance": float(dist)})
-        if len(results) >= k:
-            break
-
-    return results
+        
+    try:
+        # Load locally
+        index = faiss.read_index(index_path)
+        ids   = np.load(ids_path)
+        
+        # Query
+        query_vector = np.array([query_vector]).astype("float32")
+        distances, indices = index.search(query_vector, k)
+        
+        # Format results
+        results = [
+            {"component_id": int(ids[i]), "score": float(distances[0][j])}
+            for j, i in enumerate(indices[0]) if i < len(ids)
+        ]
+        
+        return results
+        
+    except Exception as e:
+        print(f"Error searching locally on {subcategory}: {e}")
+        return []

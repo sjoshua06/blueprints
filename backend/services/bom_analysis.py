@@ -7,10 +7,10 @@ from sqlalchemy import text
 from db.database import engine
 
 
-def analyze_bom(bom_df, receipts_df):
+def analyze_bom(bom_df, receipts_df, user_id=None):
 
     # Load specs once for all iterations
-    specs_df = load_component_specs()
+    specs_df = load_component_specs(user_id)
 
     results = []
 
@@ -56,12 +56,15 @@ def analyze_bom(bom_df, receipts_df):
             if vector is None:
                 continue
 
-            similar = search_similar(subcat, vector, user_id=user_id)
+            # Fix: search_similar(query_vector, subcategory, ...)
+            similar = search_similar(vector, subcat, user_id=user_id)
 
             if not similar:
                 continue
 
-            max_dist = max(s["distance"] for s in similar)
+            # Handle distance vs score
+            dist_key = "score" if "score" in similar[0] else "distance"
+            max_dist = max(s[dist_key] for s in similar)
 
             alternatives = []
 
@@ -76,7 +79,7 @@ def analyze_bom(bom_df, receipts_df):
                     "component_id":       int(s["component_id"]),
                     "component_name":     component_details["component_name"],
                     "compatibility_score": compatibility_score(
-                        s["distance"], max_dist
+                        s[dist_key], max_dist
                     ),
                     "suppliers": component_details["suppliers"],
                 })

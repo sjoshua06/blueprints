@@ -11,83 +11,97 @@ router = APIRouter(prefix="/setup")
 
 
 from auth.dependencies import get_current_user_id
+import numpy as np
+import uuid
+
+def generic_upsert(table_name: str, df: pd.DataFrame, conn, conflict_column: str):
+    """Batched UPSERT for better performance using a staging table."""
+    if df.empty:
+        return
+
+    # 1. Choose a unique staging table name
+    u_suffix = uuid.uuid4().hex
+    staging_table = f"staging_{table_name}_{u_suffix[:8]}"
+
+    # 2. Get columns (exclude computed ones)
+    columns = [str(c) for c in df.columns if c not in ['created_at', 'last_updated']]
+    df_staging = df[columns].copy()
+
+    # 3. Create staging table structure from target
+    # Handle the fact that df[columns] might contain NaNs that to_sql handles
+    df_staging.to_sql(staging_table, conn, if_exists="replace", index=False)
+
+    # 4. Perform the bulk UPSERT from staging to real table
+    col_names = ", ".join(columns)
+    # Special handling for UUID columns which often need casting from TEXT staging
+    select_cols = ", ".join([f"{c}::uuid" if c == "user_id" or c == "uploaded_by" else c for c in columns])
+    excluded_set = ", ".join([f"{c} = EXCLUDED.{c}" for c in columns if c != conflict_column])
+
+    upsert_query = text(f"""
+        INSERT INTO {table_name} ({col_names})
+        SELECT {select_cols} FROM {staging_table}
+        ON CONFLICT ({conflict_column}) DO UPDATE SET
+        {excluded_set}
+    """)
+
+    conn.execute(upsert_query)
+
+    # 5. Clean up
+    conn.execute(text(f"DROP TABLE {staging_table}"))
 
 # ================================
 # Upload Components
 # ================================
 @router.post("/components")
 async def upload_components(file: UploadFile, user_id: str = Depends(get_current_user_id)):
-
     try:
-        contents = await file.read()              # read uploaded file
-        df = pd.read_excel(BytesIO(contents))     # load into pandas
+        contents = await file.read()
+        df = pd.read_excel(BytesIO(contents))
+        df["user_id"] = user_id
         
-        df["user_id"] = user_id                   # inject user_id from JWT
-
         with engine.begin() as conn:
-            df.to_sql(
-                "components",
-                conn,
-                if_exists="append",
-                index=False
-            )
+            generic_upsert("components", df, conn, "component_id")
 
         return {"message": "components uploaded"}
-
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
 
 # ================================
 # Upload Component Specifications
 # ================================
 @router.post("/component-specs")
 async def upload_component_specs(file: UploadFile, user_id: str = Depends(get_current_user_id)):
-
     try:
-        contents = await file.read()              # read uploaded file
-        df = pd.read_excel(BytesIO(contents))     # load into pandas
+        contents = await file.read()
+        df = pd.read_excel(BytesIO(contents))
+        df["user_id"] = user_id
         
-        df["user_id"] = user_id                   # inject user_id from JWT
-
         with engine.begin() as conn:
-            df.to_sql(
-                "component_specifications",
-                conn,
-                if_exists="append",
-                index=False
-            )
+            # spec_id is usually auto-generated if not in Excel. 
+            # If not in Excel, we use to_sql append. If in Excel, we upsert.
+            if "spec_id" in df.columns:
+                generic_upsert("component_specifications", df, conn, "spec_id")
+            else:
+                df.to_sql("component_specifications", conn, if_exists="append", index=False)
 
         return {"message": "component specs uploaded"}
-
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
 
 # ================================
 # Upload Suppliers
 # ================================
-
-
 @router.post("/suppliers")
 async def upload_suppliers(file: UploadFile, user_id: str = Depends(get_current_user_id)):
-
     try:
-        contents = await file.read()              # read uploaded file
-        df = pd.read_excel(BytesIO(contents))     # load into pandas
+        contents = await file.read()
+        df = pd.read_excel(BytesIO(contents))
+        df["user_id"] = user_id
         
-        df["user_id"] = user_id                   # inject user_id from JWT
-
         with engine.begin() as conn:
-            df.to_sql(
-                "suppliers",
-                conn,
-                if_exists="append",
-                index=False
-            )
+            generic_upsert("suppliers", df, conn, "supplier_id")
 
         return {"message": "suppliers uploaded"}
-
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -96,52 +110,40 @@ async def upload_suppliers(file: UploadFile, user_id: str = Depends(get_current_
 # ================================
 @router.post("/supplier-components")
 async def upload_supplier_components(file: UploadFile, user_id: str = Depends(get_current_user_id)):
-
     try:
-        contents = await file.read()              # read uploaded file
-        df = pd.read_excel(BytesIO(contents))     # load into pandas
+        contents = await file.read()
+        df = pd.read_excel(BytesIO(contents))
+        df["user_id"] = user_id
         
-        df["user_id"] = user_id                   # inject user_id from JWT
-
         with engine.begin() as conn:
-            df.to_sql(
-                "supplier_components",
-                conn,
-                if_exists="append",
-                index=False
-            )
+            if "supplier_component_id" in df.columns:
+                generic_upsert("supplier_components", df, conn, "supplier_component_id")
+            else:
+                df.to_sql("supplier_components", conn, if_exists="append", index=False)
 
         return {"message": "supplier components uploaded"}
-
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
 
 # ================================
 # Upload Inventory
 # ================================
 @router.post("/inventory")
 async def upload_inventory(file: UploadFile, user_id: str = Depends(get_current_user_id)):
-
     try:
-        contents = await file.read()              # read uploaded file
-        df = pd.read_excel(BytesIO(contents))     # load into pandas
+        contents = await file.read()
+        df = pd.read_excel(BytesIO(contents))
+        df["user_id"] = user_id
         
-        df["user_id"] = user_id                   # inject user_id from JWT
-
         with engine.begin() as conn:
-            df.to_sql(
-                "inventory",
-                conn,
-                if_exists="append",
-                index=False
-            )
+            if "inventory_id" in df.columns:
+                generic_upsert("inventory", df, conn, "inventory_id")
+            else:
+                df.to_sql("inventory", conn, if_exists="append", index=False)
 
         return {"message": "inventory uploaded"}
-
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
 
 # ================================
 # Upload Projects
@@ -154,60 +156,50 @@ async def upload_projects(file: UploadFile, user_id: str = Depends(get_current_u
         df["user_id"] = user_id
 
         with engine.begin() as conn:
-            df.to_sql("projects", conn, if_exists="append", index=False)
+            generic_upsert("projects", df, conn, "project_id")
 
         return {"message": "projects uploaded"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
 
 # ================================
 # Upload All Sheets (Master Excel)
 # ================================
 @router.post("/upload-all")
 async def upload_all(file: UploadFile, user_id: str = Depends(get_current_user_id)):
-    """
-    Parse a single master Excel file with multiple sheets: 
-    inventory, projects, components, component_specifications, suppliers, supplier_components.
-    Injects user_id into each and writes to DB.
-    """
     try:
         contents = await file.read()
-        # sheet_name=None reads all sheets into a dict of DataFrames
         excel_data = pd.read_excel(BytesIO(contents), sheet_name=None)
         
-        expected_tables = {
-            "inventory", 
-            "projects", 
-            "components", 
-            "component_specifications", 
-            "suppliers", 
-            "supplier_components"
+        # Table -> PK mapping
+        table_pks = {
+            "inventory": "inventory_id", 
+            "projects": "project_id", 
+            "components": "component_id", 
+            "component_specifications": "spec_id", 
+            "suppliers": "supplier_id", 
+            "supplier_components": "supplier_component_id"
         }
         
         processed_sheets = []
-
         with engine.begin() as conn:
             for sheet_name, df in excel_data.items():
                 norm_sheet_name = str(sheet_name).strip().lower()
                 
-                # If sheet name matches one of our expected tables, process it
-                if norm_sheet_name in expected_tables:
+                if norm_sheet_name in table_pks:
                     df["user_id"] = user_id
+                    pk = table_pks[norm_sheet_name]
                     
-                    df.to_sql(
-                        norm_sheet_name,
-                        conn,
-                        if_exists="append",
-                        index=False
-                    )
+                    if pk in df.columns:
+                        generic_upsert(norm_sheet_name, df, conn, pk)
+                    else:
+                        df.to_sql(norm_sheet_name, conn, if_exists="append", index=False)
                     processed_sheets.append(norm_sheet_name)
 
         return {
             "message": "Master Excel uploaded successfully", 
             "processed_sheets": processed_sheets
         }
-
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
