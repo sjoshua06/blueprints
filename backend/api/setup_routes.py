@@ -7,7 +7,7 @@ from utils.excel_parser import read_excel
 from services.setup_pipeline import run_setup_pipeline
 from io import BytesIO
 from schemas.project_schema import ProjectCreate, ProjectResponse
-router = APIRouter(prefix="/setup")
+router = APIRouter(prefix="/api/setup")
 
 
 from auth.dependencies import get_current_user_id

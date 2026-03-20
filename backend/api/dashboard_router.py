@@ -4,7 +4,7 @@ from sqlalchemy import text
 from db.database import engine
 from auth.dependencies import get_current_user_id
 
-router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
+router = APIRouter(prefix="/api/dashboard", tags=["Dashboard"])
 
 
 @router.get("/summary")

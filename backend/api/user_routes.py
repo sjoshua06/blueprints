@@ -5,7 +5,7 @@ from db.database import engine
 from schemas.user_schema import ProfileCreate, ProfileResponse
 from auth.dependencies import get_current_user_id
 
-router = APIRouter(prefix="/users", tags=["Users"])
+router = APIRouter(prefix="/api/users", tags=["Users"])
 
 
 @router.post("/profile", response_model=dict)

@@ -8,7 +8,7 @@ from services.bom_analysis import analyze_bom
 import pandas as pd
 from datetime import datetime
 
-router = APIRouter(prefix="/analysis")
+router = APIRouter(prefix="/api/analysis")
 
 
 # ─── Column cleaning ──────────────────────────────────────────────────────────

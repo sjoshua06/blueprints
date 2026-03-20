@@ -1,6 +1,6 @@
 import { getAccessToken } from "./auth";
 
-const BASE_URL = import.meta.env.VITE_API_URL
+const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 /* ── Internal helper ──────────────────────────────────────────── */
 
@@ -28,7 +28,7 @@ async function request(path, options = {}) {
 /* ── Profile ──────────────────────────────────────────────────── */
 
 export function createProfile(data) {
-  return request("/users/profile", {
+  return request("/api/users/profile", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -36,7 +36,7 @@ export function createProfile(data) {
 }
 
 export function getProfile() {
-  return request("/users/profile");
+  return request("/api/users/profile");
 }
 
 /* ── Setup uploads ────────────────────────────────────────────── */
@@ -44,21 +44,21 @@ export function getProfile() {
 export function uploadSetupFile(endpoint, file) {
   const form = new FormData();
   form.append("file", file);
-  return request(`/setup/${endpoint}`, { method: "POST", body: form });
+  return request(`/api/setup/${endpoint}`, { method: "POST", body: form });
 }
 
 export function buildIndexes() {
-  return request("/setup/build-indexes", { method: "POST" });
+  return request("/api/setup/build-indexes", { method: "POST" });
 }
 
 export function getSetupStatus() {
-  return request("/setup/status");
+  return request("/api/setup/status");
 }
 
 /* ── Project ──────────────────────────────────────────────────── */
 
 export function createProject(data) {
-  return request("/setup/project", {
+  return request("/api/setup/project", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -68,19 +68,19 @@ export function createProject(data) {
 /* ── Dashboard ────────────────────────────────────────────────── */
 
 export function getDashboardSummary() {
-  return request("/dashboard/summary");
+  return request("/api/dashboard/summary");
 }
 
 export function getDashboardComponents() {
-  return request("/dashboard/components");
+  return request("/api/dashboard/components");
 }
 
 export function getDashboardSuppliers() {
-  return request("/dashboard/suppliers");
+  return request("/api/dashboard/suppliers");
 }
 
 export function getDashboardInventory() {
-  return request("/dashboard/inventory");
+  return request("/api/dashboard/inventory");
 }
 
 /* ── BOM Analysis ─────────────────────────────────────────────── */
@@ -89,13 +89,13 @@ export function analyzeBom(bomFile, receiptFile) {
   const form = new FormData();
   form.append("bom_file", bomFile);
   form.append("receipt_file", receiptFile);
-  return request("/analysis/bom", { method: "POST", body: form });
+  return request("/api/analysis/bom", { method: "POST", body: form });
 }
 
 /* ── Risk ──────────────────────────────────────────────────────── */
 
 export function predictRisk(data) {
-  return request("/risk/predict", {
+  return request("/api/supplier-risk/predict", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -103,7 +103,7 @@ export function predictRisk(data) {
 }
 
 export function predictAllSuppliersRisk() {
-  return request("/risk/predict-all", { method: "POST" });
+  return request("/api/supplier-risk/predict-all", { method: "POST" });
 }
 
 /* ── Internal Risk (Inventory Risk) ───────────────────────────── */
