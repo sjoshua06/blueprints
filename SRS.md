@@ -41,7 +41,7 @@ The system follows a strict **Decoupled Client-Server Monolithic API Architectur
 - **`package.json`**: `react`, `recharts`, `@supabase/supabase-js`, `lucide-react`.
 - **`requirements.txt`**: `fastapi`, `prophet`, `faiss-cpu`, `scikit-learn`, `SQLAlchemy`, `pandas`, `huggingface_hub`, `python-jose` (used for JWT parsing).
 
-### 2.5 Novelty of Your Solution
+### 2.5 Novelty of our Solution
 SupplyShield differentiates itself from traditional supply chain management tools through:
 - **Vector-Based Component Matching**: Utilizing FAISS for sub-millisecond similarity searches to find alternative components during supply shortages, a feature rarely found in standard ERP systems.
 - **Predictive Inventory Intelligence**: Direct integration of Facebook Prophet for high-accuracy, seasonality-aware 90-day stockout forecasting, providing proactive rather than reactive management.
