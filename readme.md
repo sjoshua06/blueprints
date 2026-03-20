@@ -6,6 +6,16 @@ SupplyShield is a comprehensive platform designed to predict supplier risks, for
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue) ![React](https://img.shields.io/badge/Frontend-React_Vite-violet) ![FastAPI](https://img.shields.io/badge/Backend-FastAPI-green) ![Supabase](https://img.shields.io/badge/Database-Supabase-emerald)
 
+## 🌄 Demo
+
+![First Page](./assets/first_page.jpeg)
+![Login Screen](./assets/login.jpeg)
+![Second Page](./assets/secondp.jpeg)
+![Third Page](./assets/third.jpeg)
+![Fourth Page](./assets/fourth.jpeg)
+![Fifth Page](./assets/fifth.jpeg)
+![Sixth Page](./assets/sixth.jpeg)
+
 ## 🚀 Key Features
 
 * **⚠️ Supplier Risk Prediction:** Uses machine learning (deployed via Hugging Face) to cross-reference delivery history, defect rates, and reliability scores, instantly identifying high-risk suppliers.
