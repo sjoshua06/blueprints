@@ -5,7 +5,7 @@ from auth.dependencies import get_current_user_id
 from schemas.risk_schema import RiskPredictionRequest, RiskPredictionResponse
 from services.risk_predictor import predict_risk
 
-router = APIRouter(prefix="/risk", tags=["Risk Prediction"])
+router = APIRouter(prefix="/api/supplier-risk", tags=["Risk Prediction"])
 
 @router.post("/predict", response_model=RiskPredictionResponse)
 def predict_supplier_risk(data: RiskPredictionRequest):
