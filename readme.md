@@ -127,4 +127,16 @@ npm install
 npm run dev
 ```
 
+### 3. Demo Data Setup
+To test the platform's features, you can upload 6 sample files provided in the link below during the initial setup phase. These files serve as examples for the Risk Prediction and Inventory Forecasting modules.
+
+**Initial Setup Sample Data:** [Download 6 Sample CSV Files](https://drive.google.com/drive/folders/1Bmao6Gt45VNcV8QadfLO8d008taZnVNG?usp=drive_link)
+
+### 4. BOM Analysis Samples
+For testing the BOM Analysis and component detection features, you can use the sample bill of materials and receipts available in the link below.
+
+**BOM Analysis Demo Data:** [Download Sample BOM & Receipts](https://drive.google.com/drive/folders/1Mn113Dde81PfHCHKw7g0LtNRTk4wFraX?usp=drive_link)
+
+---
+
 Your backend will now be running at `http://localhost:8000` and your frontend at `http://localhost:5173`. Open the frontend URL in your browser to begin analyzing your supply chain!
