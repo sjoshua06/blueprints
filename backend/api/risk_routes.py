@@ -76,47 +76,64 @@ def predict_all_suppliers(user_id: str = Depends(get_current_user_id)):
     results = []
 
     try:
-        with engine.begin() as conn:
+        # Step 1: Read data using a short connection
+        with engine.connect() as conn:
             rows = conn.execute(text(select_sql), {"uid": user_id}).fetchall()
-
-            update_data = []
-            for row in rows:
-                features = {
-                    "availability_score":    float(row.avg_availability_score or 0.5),
-                    "reliability_score":     float(row.reliability_score or 50.0),
-                    "defect_rate":           float(row.defect_rate or 0.0),
-                    "on_time_delivery_rate": float(row.on_time_delivery_rate or 50.0),
-                    "avg_lead_time_days":    float(row.avg_lead_time_days or 30.0),
-                }
-
-                supplier_name = str(row.supplier_name or "Unknown")
-                country = str(row.country or "Global")
-
-                # Full hybrid prediction
-                risk_result = compute_final_risk(
-                    supplier_name=supplier_name,
-                    country=country,
-                    features=features,
-                )
-
-                # The DB column stores 0–1 scale
-                risk_for_db = risk_result["risk_score"] / 100.0
-                update_data.append({"risk": risk_for_db, "sid": row.supplier_id})
-
-                results.append({
-                    "supplier_id":        row.supplier_id,
-                    "supplier_name":      supplier_name,
-                    "country":            country,
-                    "availability_score": features["availability_score"],
-                    "reliability_score":  features["reliability_score"],
-                    "defect_rate":        features["defect_rate"],
-                    "on_time_delivery_rate": features["on_time_delivery_rate"],
-                    "avg_lead_time_days": features["avg_lead_time_days"],
-                    **risk_result,
+            
+            # Convert to dictionary so we don't depend on the open connection for lazy loading
+            row_dicts = []
+            for r in rows:
+                row_dicts.append({
+                    "supplier_id": r.supplier_id,
+                    "supplier_name": r.supplier_name,
+                    "country": r.country,
+                    "reliability_score": r.reliability_score,
+                    "defect_rate": r.defect_rate,
+                    "on_time_delivery_rate": r.on_time_delivery_rate,
+                    "avg_lead_time_days": r.avg_lead_time_days,
+                    "avg_availability_score": r.avg_availability_score
                 })
 
-            # Batch update DB
-            if update_data:
+        # Step 2: Process heavy external logic without holding DB transaction open
+        update_data = []
+        for row in row_dicts:
+            features = {
+                "availability_score":    float(row["avg_availability_score"] or 0.5),
+                "reliability_score":     float(row["reliability_score"] or 50.0),
+                "defect_rate":           float(row["defect_rate"] or 0.0),
+                "on_time_delivery_rate": float(row["on_time_delivery_rate"] or 50.0),
+                "avg_lead_time_days":    float(row["avg_lead_time_days"] or 30.0),
+            }
+
+            supplier_name = str(row["supplier_name"] or "Unknown")
+            country = str(row["country"] or "Global")
+
+            # Full hybrid prediction
+            risk_result = compute_final_risk(
+                supplier_name=supplier_name,
+                country=country,
+                features=features,
+            )
+
+            # The DB column stores 0–1 scale
+            risk_for_db = risk_result["risk_score"] / 100.0
+            update_data.append({"risk": risk_for_db, "sid": row["supplier_id"]})
+
+            results.append({
+                "supplier_id":        row["supplier_id"],
+                "supplier_name":      supplier_name,
+                "country":            country,
+                "availability_score": features["availability_score"],
+                "reliability_score":  features["reliability_score"],
+                "defect_rate":        features["defect_rate"],
+                "on_time_delivery_rate": features["on_time_delivery_rate"],
+                "avg_lead_time_days": features["avg_lead_time_days"],
+                **risk_result,
+            })
+
+        # Step 3: Batch update DB using a new transaction
+        if update_data:
+            with engine.begin() as conn:
                 conn.execute(text(update_sql), update_data)
 
         return {
