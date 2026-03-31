@@ -1,6 +1,6 @@
 from services.vector_search import search_similar
 from services.compatibility_service import compatibility_score
-from services.vector_builder import build_vector_from_component
+from services.vector_builder import build_vector_from_component, build_vector_from_text
 from services.spec_loader import load_component_specs
 from services.component_lookup import get_component_details
 from sqlalchemy import text
@@ -15,9 +15,9 @@ def analyze_bom(bom_df, receipts_df, user_id=None):
     all_bom_cids = bom_df["component_id"].unique().tolist()
     cid_metadata = {}
     if all_bom_cids:
-        query = text("SELECT component_id, subcategory FROM components WHERE component_id IN :cids")
+        query = text("SELECT component_id, subcategory FROM components WHERE component_id IN :cids AND user_id = :user_id")
         with engine.connect() as conn:
-            rows = conn.execute(query, {"cids": tuple(all_bom_cids)}).fetchall()
+            rows = conn.execute(query, {"cids": tuple(all_bom_cids), "user_id": user_id}).fetchall()
             cid_metadata = {int(r[0]): r[1] for r in rows}
 
     results = []
@@ -43,8 +43,14 @@ def analyze_bom(bom_df, receipts_df, user_id=None):
         if not subcat:
             continue
 
-        # Build vector
+        # Build vector using existing specs
         vector, _ = build_vector_from_component(component_id, specs_df)
+        
+        # MAGIC NLP FALLBACK: If component has zero specs mapped in DB, fall back to pure text semantics!
+        if vector is None:
+            raw_text = f"Component Name: {component_name}\nSubcategory: {subcat}"
+            vector = build_vector_from_text(raw_text)
+            
         if vector is None:
             continue
 
@@ -77,12 +83,17 @@ def analyze_bom(bom_df, receipts_df, user_id=None):
                 sc.unit_price,
                 sc.lead_time_days
             FROM components c
-            JOIN supplier_components sc ON sc.component_id = c.component_id
-            JOIN suppliers s ON s.supplier_id = sc.supplier_id
+            JOIN supplier_components sc 
+                ON sc.component_id = c.component_id 
+                AND sc.user_id = c.user_id
+            JOIN suppliers s 
+                ON s.supplier_id = sc.supplier_id 
+                AND s.user_id = c.user_id
             WHERE c.component_id IN :cids
+              AND c.user_id = :user_id
         """)
         with engine.connect() as conn:
-            rows = conn.execute(query, {"cids": tuple(all_candidate_ids)}).fetchall()
+            rows = conn.execute(query, {"cids": tuple(all_candidate_ids), "user_id": user_id}).fetchall()
             
             for r in rows:
                 cid = int(r.component_id)

@@ -2,7 +2,7 @@ from sqlalchemy import text
 from db.database import engine
 
 
-def get_component_details(component_id, active_conn=None):
+def get_component_details(component_id, user_id, active_conn=None):
 
     query = text("""
     SELECT 
@@ -13,16 +13,19 @@ def get_component_details(component_id, active_conn=None):
     FROM components c
     JOIN supplier_components sc 
         ON sc.component_id = c.component_id
+        AND sc.user_id = c.user_id
     JOIN suppliers s 
         ON s.supplier_id = sc.supplier_id
+        AND s.user_id = c.user_id
     WHERE c.component_id = :component_id
+      AND c.user_id = :user_id
     """)
 
     if active_conn:
-        rows = active_conn.execute(query, {"component_id": component_id}).fetchall()
+        rows = active_conn.execute(query, {"component_id": component_id, "user_id": user_id}).fetchall()
     else:
         with engine.connect() as conn:
-            rows = conn.execute(query, {"component_id": component_id}).fetchall()
+            rows = conn.execute(query, {"component_id": component_id, "user_id": user_id}).fetchall()
 
     if not rows:
         return None
