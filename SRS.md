@@ -41,13 +41,6 @@ The system follows a strict **Decoupled Client-Server Monolithic API Architectur
 - **`package.json`**: `react`, `recharts`, `@supabase/supabase-js`, `lucide-react`.
 - **`requirements.txt`**: `fastapi`, `prophet`, `faiss-cpu`, `scikit-learn`, `SQLAlchemy`, `pandas`, `huggingface_hub`, `python-jose` (used for JWT parsing).
 
-### 2.5 Novelty of our Solution
-SupplyShield differentiates itself from traditional supply chain management tools through:
-- **Vector-Based Component Matching**: Utilizing FAISS for sub-millisecond similarity searches to find alternative components during supply shortages, a feature rarely found in standard ERP systems.
-- **Predictive Inventory Intelligence**: Direct integration of Facebook Prophet for high-accuracy, seasonality-aware 90-day stockout forecasting, providing proactive rather than reactive management.
-- **Nuanced Supplier Risk Scoring**: A multi-dimensional risk engine that combines delivery performance, defect rates, and reliability scores into a single, actionable metric.
-- **Seamless Data Integration**: A specialized pipeline for mapping unstructured CSV data into a refined PostgreSQL schema optimized for ML workloads.
-
 ---
 
 ## 3. Functional Requirements
@@ -125,24 +118,14 @@ SupplyShield differentiates itself from traditional supply chain management tool
 
 ---
 
-## 8. Future Ideas to be Implemented
-Significant improvements and new features planned for future updates:
-- **Real-time Global Disruptions Monitoring**: Integration with global news and logistics APIs to alert users of potential delays caused by geopolitics or natural disasters.
-- **Automated Reordering System**: Integration with procurement platforms to automatically trigger reorders when stock reaches predicted critical levels.
-- **Collaborative Workspaces**: Multi-user permissions and shared workspaces for enterprise-level procurement teams.
-- **Mobile Alert System**: A dedicated mobile application for real-time risk notifications and dashboard access on the go.
-- **Enhanced OCR for Receipts**: Upgrading the receipt parsing service with advanced deep-learning-based OCR for high-accuracy extraction from complex invoice layouts.
+## 7. Appendix
 
----
-
-## 9. Appendix
-
-### 9.1 Glossary
+### 7.1 Glossary
 - **`ProphetChart.jsx`**: Custom React context wrapping the Recharts API to render `yhat` projections.
 - **Euclidean Distance**: Vector metric mapping how closely related two disparate component IDs are inside FAISS dimensions.
 - **Heuristics**: Model-based algorithmic shortcuts identifying bad vendors.
 
-### 9.2 Files Scanned Automatically
+### 7.2 Files Scanned Automatically
 * `backend/requirements.txt`
 * `frontend/package.json`
 * `frontend/src/services/api.js`
@@ -154,4 +137,6 @@ Significant improvements and new features planned for future updates:
 * `backend/api/internal_risk_routes.py`
 * `frontend/src/pages/InventoryRisk.jsx`
 
-
+### 7.3 Items Marked [TO BE DEFINED] 
+- **[TO BE DEFINED]:** Explicit deployment architecture schema (e.g., Docker container constraints, CI/CD pipeline routing, AWS/Vercel platform decisions).
+- **[TO BE DEFINED]:** Supabase internal table RLS schema layouts.
