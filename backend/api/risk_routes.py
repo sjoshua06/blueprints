@@ -49,6 +49,7 @@ def predict_all_suppliers(user_id: str = Depends(get_current_user_id)):
         with engine.begin() as conn:
             rows = conn.execute(text(select_sql), {"uid": user_id}).fetchall()
             
+            update_data = []
             for row in rows:
                 features = [
                     float(row.avg_availability_score or 0.5),
@@ -58,11 +59,11 @@ def predict_all_suppliers(user_id: str = Depends(get_current_user_id)):
                     float(row.avg_lead_time_days or 30.0)
                 ]
                 
-                # Predict risk
+                # Predict risk (cached model)
                 risk = predict_risk(features)
                 
-                # Update DB
-                conn.execute(text(update_sql), {"risk": risk, "sid": row.supplier_id})
+                # Collect for batch update
+                update_data.append({"risk": risk, "sid": row.supplier_id})
                 
                 # Append to results for response
                 results.append({
@@ -75,8 +76,12 @@ def predict_all_suppliers(user_id: str = Depends(get_current_user_id)):
                     "avg_lead_time_days": features[4],
                     "risk_score": risk
                 })
+            
+            # Batch Update
+            if update_data:
+                conn.execute(text(update_sql), update_data)
                 
-        return {"message": "Successfully predicted risk for suppliers", "data": results}
+        return {"message": f"Successfully predicted risk for {len(results)} suppliers", "data": results}
 
     except Exception as e:
         import traceback

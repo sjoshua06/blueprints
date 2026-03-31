@@ -2,12 +2,15 @@ import faiss
 import numpy as np
 import os
 
-# Local Storage Path
+# Local Storage Path and Cache
 INDEX_DIR = os.path.join(os.path.dirname(__file__), "indexes")
+_INDEX_CACHE = {}
+_IDS_CACHE   = {}
 
 def search_similar(query_vector, subcategory, user_id=None, k=5):
     """
     Searches for similar components using local FAISS indexes.
+    Uses in-memory caching to avoid redundant disk I/O.
     """
     safe_name = subcategory.lower().replace(" ", "_").replace("/", "_")
     
@@ -19,9 +22,16 @@ def search_similar(query_vector, subcategory, user_id=None, k=5):
         return []
         
     try:
-        # Load locally
-        index = faiss.read_index(index_path)
-        ids   = np.load(ids_path)
+        # Load from cache or disk
+        if safe_name in _INDEX_CACHE:
+            index = _INDEX_CACHE[safe_name]
+            ids   = _IDS_CACHE[safe_name]
+        else:
+            index = faiss.read_index(index_path)
+            ids   = np.load(ids_path)
+            _INDEX_CACHE[safe_name] = index
+            _IDS_CACHE[safe_name]   = ids
+            print(f"💾 Loaded index for {subcategory} into memory.")
         
         # Query
         query_vector = np.array([query_vector]).astype("float32")

@@ -8,89 +8,118 @@ from db.database import engine
 
 
 def analyze_bom(bom_df, receipts_df, user_id=None):
-
     # Load specs once for all iterations
     specs_df = load_component_specs(user_id)
+    
+    # 1. Pre-fetch subcategories for all components in BOM
+    all_bom_cids = bom_df["component_id"].unique().tolist()
+    cid_metadata = {}
+    if all_bom_cids:
+        query = text("SELECT component_id, subcategory FROM components WHERE component_id IN :cids")
+        with engine.connect() as conn:
+            rows = conn.execute(query, {"cids": tuple(all_bom_cids)}).fetchall()
+            cid_metadata = {int(r[0]): r[1] for r in rows}
 
     results = []
+    all_similar_hits = [] # List of (bom_comp_info, similar_list)
 
-    with engine.connect() as conn:
-        for _, row in bom_df.iterrows():
+    # 2. First pass: Find similarities and identify all candidate IDs
+    all_candidate_ids = set()
+    
+    for _, row in bom_df.iterrows():
+        component_id   = int(row["component_id"])
+        component_name = str(row["component_name"])
+        required_qty   = int(row["quantity_required"])
 
-            # ── BOM row uses component_id directly ───────────────────────────
-            component_id   = int(row["component_id"])
-            component_name = str(row["component_name"])
-            required_qty   = int(row["quantity_required"])
+        # Match receipts
+        receipt_rows = receipts_df[receipts_df["component_id"] == component_id]
+        received_qty = int(receipt_rows["quantity_received"].sum()) if not receipt_rows.empty else 0
+        missing_qty = required_qty - received_qty
 
-            # ── Match receipts by component_id (not component_name) ──────────
-            receipt_rows = receipts_df[
-                receipts_df["component_id"] == component_id
-            ]
+        if missing_qty <= 0:
+            continue
 
-            received_qty = 0
-            if not receipt_rows.empty:
-                received_qty = int(receipt_rows["quantity_received"].sum())
+        subcat = cid_metadata.get(component_id)
+        if not subcat:
+            continue
 
-            missing_qty = required_qty - received_qty
+        # Build vector
+        vector, _ = build_vector_from_component(component_id, specs_df)
+        if vector is None:
+            continue
 
-            if missing_qty <= 0:
-                continue
+        # Search (now cached)
+        similar = search_similar(vector, subcat, user_id=user_id)
+        if not similar:
+            continue
 
-            query = text("""
-                SELECT component_id, component_type, subcategory
-                FROM components
-                WHERE component_id = :cid
-            """)
+        all_similar_hits.append({
+            "component_id": component_id,
+            "component": component_name,
+            "required": required_qty,
+            "received": received_qty,
+            "missing": missing_qty,
+            "similar": similar
+        })
+        
+        for s in similar:
+            all_candidate_ids.add(int(s["component_id"]))
 
-            result = conn.execute(query, {"cid": component_id}).fetchone()
-
-            if not result:
-                continue
-
-            # component_type = str(result.component_type)
-            subcategory    = str(result.subcategory)
-
-            # ── Build vector for this specific component_id ───────────────────
-            vector, subcat = build_vector_from_component(component_id, specs_df)
-
-            if vector is None:
-                continue
-
-            # Fix: search_similar(query_vector, subcategory, ...)
-            similar = search_similar(vector, subcat, user_id=user_id)
-
-            if not similar:
-                continue
-
-            # Handle distance vs score
-            dist_key = "score" if "score" in similar[0] else "distance"
-            max_dist = max(s[dist_key] for s in similar)
-
-            alternatives = []
-
-            for s in similar:
-                # Pass the active connection to prevent 100x slower connection recreating
-                component_details = get_component_details(int(s["component_id"]), active_conn=conn)
-
-                if not component_details:
-                    continue
-
-                alternatives.append({
-                    "component_id":       int(s["component_id"]),
-                    "component_name":     component_details["component_name"],
-                    "compatibility_score": compatibility_score(
-                        s[dist_key], max_dist
-                    ),
-                    "suppliers": component_details["suppliers"],
+    # 3. Bulk fetch details for all candidate components
+    candidate_details = {}
+    if all_candidate_ids:
+        # We'll use a modified version of get_component_details logic here for bulk
+        query = text("""
+            SELECT 
+                c.component_id,
+                c.component_name,
+                s.supplier_name,
+                sc.unit_price,
+                sc.lead_time_days
+            FROM components c
+            JOIN supplier_components sc ON sc.component_id = c.component_id
+            JOIN suppliers s ON s.supplier_id = sc.supplier_id
+            WHERE c.component_id IN :cids
+        """)
+        with engine.connect() as conn:
+            rows = conn.execute(query, {"cids": tuple(all_candidate_ids)}).fetchall()
+            
+            for r in rows:
+                cid = int(r.component_id)
+                if cid not in candidate_details:
+                    candidate_details[cid] = {"component_name": r.component_name, "suppliers": []}
+                candidate_details[cid]["suppliers"].append({
+                    "supplier_name": str(r.supplier_name),
+                    "price": float(r.unit_price),
+                    "lead_time_days": int(r.lead_time_days)
                 })
 
-            results.append({
-                "component_id":          component_id,
-                "component":             component_name,
-                "required":              required_qty,
-                "received":              received_qty,
-                "missing":               missing_qty,
-                "compatible_components": alternatives,
+    # 4. Final pass: Assemble results
+    for hit in all_similar_hits:
+        similar = hit["similar"]
+        dist_key = "score" if "score" in similar[0] else "distance"
+        max_dist = max(s[dist_key] for s in similar)
+        
+        alternatives = []
+        for s in similar:
+            cid = int(s["component_id"])
+            details = candidate_details.get(cid)
+            if not details: continue
+            
+            alternatives.append({
+                "component_id": cid,
+                "component_name": details["component_name"],
+                "compatibility_score": compatibility_score(s[dist_key], max_dist),
+                "suppliers": details["suppliers"]
             })
+            
+        results.append({
+            "component_id": hit["component_id"],
+            "component": hit["component"],
+            "required": hit["required"],
+            "received": hit["received"],
+            "missing": hit["missing"],
+            "compatible_components": alternatives
+        })
 
     return results

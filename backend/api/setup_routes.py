@@ -14,7 +14,7 @@ from auth.dependencies import get_current_user_id
 import numpy as np
 import uuid
 
-def generic_upsert(table_name: str, df: pd.DataFrame, conn, conflict_column: str):
+def generic_upsert(table_name: str, df: pd.DataFrame, conn, conflict_columns: list[str]):
     """Batched UPSERT for better performance using a staging table."""
     if df.empty:
         return
@@ -35,12 +35,13 @@ def generic_upsert(table_name: str, df: pd.DataFrame, conn, conflict_column: str
     col_names = ", ".join(columns)
     # Special handling for UUID columns which often need casting from TEXT staging
     select_cols = ", ".join([f"{c}::uuid" if c == "user_id" or c == "uploaded_by" else c for c in columns])
-    excluded_set = ", ".join([f"{c} = EXCLUDED.{c}" for c in columns if c != conflict_column])
+    conflict_cols_str = ", ".join(conflict_columns)
+    excluded_set = ", ".join([f"{c} = EXCLUDED.{c}" for c in columns if c not in conflict_columns])
 
     upsert_query = text(f"""
         INSERT INTO {table_name} ({col_names})
         SELECT {select_cols} FROM {staging_table}
-        ON CONFLICT ({conflict_column}) DO UPDATE SET
+        ON CONFLICT ({conflict_cols_str}) DO UPDATE SET
         {excluded_set}
     """)
 
@@ -60,7 +61,7 @@ async def upload_components(file: UploadFile, user_id: str = Depends(get_current
         df["user_id"] = user_id
         
         with engine.begin() as conn:
-            generic_upsert("components", df, conn, "component_id")
+            generic_upsert("components", df, conn, ["user_id", "component_id"])
 
         return {"message": "components uploaded"}
     except Exception as e:
@@ -80,7 +81,7 @@ async def upload_component_specs(file: UploadFile, user_id: str = Depends(get_cu
             # spec_id is usually auto-generated if not in Excel. 
             # If not in Excel, we use to_sql append. If in Excel, we upsert.
             if "spec_id" in df.columns:
-                generic_upsert("component_specifications", df, conn, "spec_id")
+                generic_upsert("component_specifications", df, conn, ["user_id", "spec_id"])
             else:
                 df.to_sql("component_specifications", conn, if_exists="append", index=False)
 
@@ -99,7 +100,7 @@ async def upload_suppliers(file: UploadFile, user_id: str = Depends(get_current_
         df["user_id"] = user_id
         
         with engine.begin() as conn:
-            generic_upsert("suppliers", df, conn, "supplier_id")
+            generic_upsert("suppliers", df, conn, ["user_id", "supplier_id"])
 
         return {"message": "suppliers uploaded"}
     except Exception as e:
@@ -117,7 +118,7 @@ async def upload_supplier_components(file: UploadFile, user_id: str = Depends(ge
         
         with engine.begin() as conn:
             if "supplier_component_id" in df.columns:
-                generic_upsert("supplier_components", df, conn, "supplier_component_id")
+                generic_upsert("supplier_components", df, conn, ["user_id", "supplier_component_id"])
             else:
                 df.to_sql("supplier_components", conn, if_exists="append", index=False)
 
@@ -137,7 +138,7 @@ async def upload_inventory(file: UploadFile, user_id: str = Depends(get_current_
         
         with engine.begin() as conn:
             if "inventory_id" in df.columns:
-                generic_upsert("inventory", df, conn, "inventory_id")
+                generic_upsert("inventory", df, conn, ["user_id", "inventory_id"])
             else:
                 df.to_sql("inventory", conn, if_exists="append", index=False)
 
@@ -156,7 +157,7 @@ async def upload_projects(file: UploadFile, user_id: str = Depends(get_current_u
         df["user_id"] = user_id
 
         with engine.begin() as conn:
-            generic_upsert("projects", df, conn, "project_id")
+            generic_upsert("projects", df, conn, ["user_id", "project_id"])
 
         return {"message": "projects uploaded"}
     except Exception as e:
@@ -191,7 +192,7 @@ async def upload_all(file: UploadFile, user_id: str = Depends(get_current_user_i
                     pk = table_pks[norm_sheet_name]
                     
                     if pk in df.columns:
-                        generic_upsert(norm_sheet_name, df, conn, pk)
+                        generic_upsert(norm_sheet_name, df, conn, ["user_id", pk])
                     else:
                         df.to_sql(norm_sheet_name, conn, if_exists="append", index=False)
                     processed_sheets.append(norm_sheet_name)

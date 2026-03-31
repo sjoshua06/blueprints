@@ -21,77 +21,106 @@ def forecast_component_stock(component_id, df_receipts, df_inventory_row, foreca
     if comp_receipts.empty:
         return None
         
-    comp_receipts["received_date"] = pd.to_datetime(comp_receipts["received_date"])
+    comp_receipts["received_date"] = pd.to_datetime(comp_receipts["received_date"]).dt.normalize()
     comp_receipts = comp_receipts.sort_values("received_date")
 
     if len(comp_receipts) < 5:
         return None
 
     current_stock     = float(df_inventory_row["stock_quantity"])
-    daily_consumption = float(df_inventory_row.get("daily_consumption", 2.5)) # fallback to 2.5 if missing
+    daily_consumption = float(df_inventory_row.get("daily_consumption", 2.5))
 
-    date_range   = pd.date_range(start=comp_receipts["received_date"].min(),
-                                 end=pd.Timestamp.now(), freq="D")
-    stock_series = pd.Series(index=date_range, dtype=float)
-    stock_series.iloc[-1] = current_stock
+    # Vectorized historical stock calculation
+    start_date = comp_receipts["received_date"].min()
+    end_date = pd.Timestamp.now().normalize()
+    date_range = pd.date_range(start=start_date, end=end_date, freq="D")
+    
+    # 1. Sum receipts by date
+    daily_receipts = comp_receipts.groupby("received_date")["quantity_received"].sum().reindex(date_range, fill_value=0)
+    
+    # 2. Calculate stock backwards using vectorized cumsum
+    # Stock[i] = Stock[i+1] + consumption - receipts[i]
+    diffs = (daily_consumption - daily_receipts)
+    
+    # We want to sum diffs from i to N-1 (excluding index N/today)
+    diffs_to_add = diffs.iloc[:-1].iloc[::-1].cumsum().iloc[::-1].reindex(date_range, fill_value=0)
+    
+    stock_values = (current_stock + diffs_to_add).clip(lower=0)
+    
+    prophet_df = pd.DataFrame({"ds": date_range, "y": stock_values.values}).dropna()
 
-    for i in range(len(date_range) - 2, -1, -1):
-        date = date_range[i]
-        receipt_on_date = comp_receipts[
-            comp_receipts["received_date"].dt.date == date.date()
-        ]["quantity_received"].sum()
-        stock_series.iloc[i] = stock_series.iloc[i + 1] + daily_consumption - receipt_on_date
-
-    stock_series = stock_series.clip(lower=0)
-    prophet_df   = pd.DataFrame({"ds": stock_series.index, "y": stock_series.values}).dropna()
-
-    model = Prophet(daily_seasonality=False, weekly_seasonality=True,
-                    yearly_seasonality=False, changepoint_prior_scale=0.05,
-                    interval_width=0.80)
+    # Faster Prophet configuration
+    model = Prophet(
+        daily_seasonality=False, 
+        weekly_seasonality=True,
+        yearly_seasonality=False, 
+        changepoint_prior_scale=0.05,
+        interval_width=0.80
+    )
     model.fit(prophet_df)
 
     future          = model.make_future_dataframe(periods=forecast_days)
     forecast        = model.predict(future)
-    future_forecast = forecast[forecast["ds"] > pd.Timestamp.now()]
+    
+    # Extract results
+    future_forecast = forecast[forecast["ds"] > end_date]
     stockout_rows   = future_forecast[future_forecast["yhat"] <= 0]
+    
     reorder_val     = float(df_inventory_row.get("reorder_level", 0)) if not pd.isna(df_inventory_row.get("reorder_level")) else 0
     reorder_rows    = future_forecast[future_forecast["yhat"] <= reorder_val]
 
     return {
         "component_id":            component_id,
         "forecast":                forecast,
-        "predicted_stockout_date": stockout_rows["ds"].min() if len(stockout_rows) > 0 else None,
-        "predicted_reorder_date":  reorder_rows["ds"].min()  if len(reorder_rows)  > 0 else None,
+        "predicted_stockout_date": stockout_rows["ds"].min() if not stockout_rows.empty else None,
+        "predicted_reorder_date":  reorder_rows["ds"].min()  if not reorder_rows.empty  else None,
         "forecast_90d_min_stock":  round(future_forecast["yhat"].min(), 1) if not future_forecast.empty else 0
     }
+
+from concurrent.futures import ProcessPoolExecutor, as_completed
+
+def _forecast_worker(args):
+    """Worker function for parallel forecasting"""
+    cid, df_receipts, inv_row = args
+    try:
+        return forecast_component_stock(cid, df_receipts, inv_row)
+    except Exception as e:
+        print(f"Error forecasting for component {cid}: {e}")
+        return None
 
 def run_prophet_pipeline():
     df_inventory, df_receipts = get_data()
     if df_inventory.empty or df_receipts.empty:
         return {"status": "error", "message": "No inventory or receipts data found."}
         
-    forecast_results = {}
-    
     # Filter receipts count per component
     receipt_counts = df_receipts.groupby("component_id").size()
-    eligible = receipt_counts[receipt_counts >= 5].index.tolist()
+    eligible_cids = receipt_counts[receipt_counts >= 5].index.tolist()
 
-    for cid in eligible:
+    # Prepare tasks for parallel execution
+    tasks = []
+    for cid in eligible_cids:
         inv_rows = df_inventory[df_inventory["component_id"] == cid]
-        if inv_rows.empty:
-            continue
-        inv_row = inv_rows.iloc[0]
-        try:
-            result  = forecast_component_stock(cid, df_receipts, inv_row)
-            if result:
-                forecast_results[cid] = result
-        except Exception as e:
-            print(f"Error forecasting for component {cid}: {e}")
+        if not inv_rows.empty:
+            tasks.append((cid, df_receipts, inv_rows.iloc[0]))
+
+    forecast_results = []
+    
+    # Run in parallel (Prophet is CPU intensive)
+    max_workers = min(os.cpu_count() or 4, len(tasks))
+    if tasks:
+        print(f"🚀 Starting parallel forecasting for {len(tasks)} components with {max_workers} workers...")
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            # Note: We pass the entire df_receipts which might be large. 
+            # In a production system, we'd only pass relevant slices.
+            results = list(executor.map(_forecast_worker, tasks))
+            forecast_results = [r for r in results if r is not None]
 
     updates = []
     now_str = datetime.now().isoformat()
     
-    for cid, res in forecast_results.items():
+    for res in forecast_results:
+        cid = res["component_id"]
         so_date = res["predicted_stockout_date"]
         ro_date = res["predicted_reorder_date"]
         
@@ -104,15 +133,15 @@ def run_prophet_pipeline():
             risk_level = "HIGH"
         elif days_until != -1 and days_until < 30:
             risk_level = "MEDIUM"
-        elif days_until == -1:
-            risk_level = "LOW"
             
-        import math
-        cost = 15000 if risk_level == "HIGH" else (5000 if risk_level == "MEDIUM" else 1000)
         impact = "Critical" if risk_level == "HIGH" else ("High" if risk_level == "MEDIUM" else "Moderate")
-        confidence = 0.85 if len(df_receipts[df_receipts["component_id"]==cid]) > 10 else 0.65
+        cost = 15000 if risk_level == "HIGH" else (5000 if risk_level == "MEDIUM" else 1000)
         
-        record = {
+        # Confidence based on historical data points
+        hist_count = len(df_receipts[df_receipts["component_id"] == cid])
+        confidence = min(0.95, 0.5 + (hist_count / 100))
+        
+        updates.append({
             "component_id": int(cid),
             "risk_level": risk_level,
             "confidence": confidence,
@@ -122,15 +151,14 @@ def run_prophet_pipeline():
             "prophet_reorder_date": ro_date.strftime("%Y-%m-%d") if ro_date else "Not needed",
             "total_risk_cost": cost,
             "predicted_at": now_str
-        }
-        
-        updates.append(record)
+        })
         
     if updates:
+        # Supabase upsert handles batching naturally
         supabase.table("internal_risk_predictions").upsert(updates).execute()
-        return {"status": "success", "forecasted": len(updates), "eligible": len(eligible)}
+        return {"status": "success", "forecasted": len(updates), "eligible": len(eligible_cids)}
     else:
-        return {"status": "success", "forecasted": 0, "eligible": len(eligible), "message": "No new predictions added."}
+        return {"status": "success", "forecasted": 0, "eligible": len(eligible_cids), "message": "No new predictions added."}
 
 def get_prophet_plot_data(component_id: int):
     df_inventory, df_receipts = get_data()

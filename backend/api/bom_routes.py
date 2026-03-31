@@ -122,7 +122,7 @@ def save_bom_to_db(df: pd.DataFrame, user_id: str) -> tuple[int, int]:
             :component_name,
             :user_id
         )
-        ON CONFLICT (project_id, component_id) DO UPDATE SET
+        ON CONFLICT (user_id, project_id, component_id) DO UPDATE SET
             "s.no" = EXCLUDED."s.no",
             upload_id = EXCLUDED.upload_id,
             quantity_required = EXCLUDED.quantity_required,
@@ -133,46 +133,46 @@ def save_bom_to_db(df: pd.DataFrame, user_id: str) -> tuple[int, int]:
             component_name = EXCLUDED.component_name
     """)
 
-    count  = 0
-    sno    = 1          # ← starts from 1 for every new file upload
+    data_to_insert = []
+    sno = 1
+    
+    for _, row in df.iterrows():
+        raw_project_id = _safe_int(row, "project_id")
+        if not raw_project_id:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Row {sno} in BOM is missing a valid 'project_id' (cannot be empty)."
+            )
+        if raw_project_id not in valid_project_ids:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Row {sno} in BOM has project_id={raw_project_id}, but this ID does not exist in your registered Projects list!"
+            )
 
-    with engine.begin() as conn:
-        for _, row in df.iterrows():
+        raw_component_id = _safe_int(row, "component_id")
+        if not raw_component_id or raw_component_id not in valid_component_ids:
+            continue
 
-            raw_project_id = _safe_int(row, "project_id")
-            if not raw_project_id:
-                raise HTTPException(
-                    status_code=400, 
-                    detail=f"Row {sno} in BOM is missing a valid 'project_id' (cannot be empty)."
-                )
-            if raw_project_id not in valid_project_ids:
-                raise HTTPException(
-                    status_code=400, 
-                    detail=f"Row {sno} in BOM has project_id={raw_project_id}, but this ID does not exist in your registered Projects list! Please add it in Setup first."
-                )
+        data_to_insert.append({
+            "sno"                 : sno,
+            "project_id"          : raw_project_id,
+            "component_id"        : raw_component_id,
+            "upload_id"           : upload_id,
+            "quantity_required"   : int(row["quantity_required"]),
+            "unit_of_measure"     : _safe_str(row, "unit_of_measure"),
+            "reference_designator": _safe_str(row, "reference_designator"),
+            "is_critical"         : _safe_bool(row, "is_critical"),
+            "notes"               : _safe_str(row, "notes"),
+            "component_name"      : _safe_str(row, "component_name"),
+            "user_id"             : user_id,
+        })
+        sno += 1
 
-            raw_component_id = _safe_int(row, "component_id")
-            if not raw_component_id or raw_component_id not in valid_component_ids:
-                print(f"⚠️  component_id={raw_component_id} not in components — skipping row")
-                continue
+    if data_to_insert:
+        with engine.begin() as conn:
+            conn.execute(insert_sql, data_to_insert)
 
-            conn.execute(insert_sql, {
-                "sno"                 : sno,              # ← 1,2,3...N per file
-                "project_id"          : raw_project_id,
-                "component_id"        : raw_component_id,
-                "upload_id"           : upload_id,        # ← same for all rows
-                "quantity_required"   : int(row["quantity_required"]),
-                "unit_of_measure"     : _safe_str(row, "unit_of_measure"),
-                "reference_designator": _safe_str(row, "reference_designator"),
-                "is_critical"         : _safe_bool(row, "is_critical"),
-                "notes"               : _safe_str(row, "notes"),
-                "component_name"      : _safe_str(row, "component_name"),
-                "user_id"             : user_id,
-            })
-            sno   += 1
-            count += 1
-
-    return upload_id, count
+    return upload_id, len(data_to_insert)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -221,49 +221,48 @@ def save_receipts_to_db(df: pd.DataFrame, user_id: str) -> tuple[int, int]:
         )
     """)
 
-    count = 0
-    sno   = 1           # ← starts from 1 for every new file upload
+    data_to_insert = []
+    sno = 1
 
-    with engine.begin() as conn:
-        for _, row in df.iterrows():
+    for _, row in df.iterrows():
+        raw_project_id = _safe_int(row, "project_id")
+        if not raw_project_id:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Row {sno} in Receipts is missing a valid 'project_id' (cannot be empty)."
+            )
+        if raw_project_id not in valid_project_ids:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Row {sno} in Receipts has project_id={raw_project_id}, but this ID does not exist in your registered Projects."
+            )
 
-            raw_supplier_id = _safe_int(row, "supplier_id")
-            if raw_supplier_id and raw_supplier_id not in valid_supplier_ids:
-                print(f"⚠️  supplier_id={raw_supplier_id} not in suppliers — saving as NULL")
-                raw_supplier_id = None
+        raw_supplier_id = _safe_int(row, "supplier_id")
+        if raw_supplier_id and raw_supplier_id not in valid_supplier_ids:
+            raw_supplier_id = None
 
-            raw_component_id = _safe_int(row, "component_id")
-            if raw_component_id and raw_component_id not in valid_component_ids:
-                print(f"⚠️  component_id={raw_component_id} not in components — saving as NULL")
-                raw_component_id = None
+        raw_component_id = _safe_int(row, "component_id")
+        if raw_component_id and raw_component_id not in valid_component_ids:
+            raw_component_id = None
 
-            raw_project_id = _safe_int(row, "project_id")
-            if not raw_project_id:
-                raise HTTPException(
-                    status_code=400, 
-                    detail=f"Row {sno} in Receipts is missing a valid 'project_id' (cannot be empty)."
-                )
-            if raw_project_id not in valid_project_ids:
-                raise HTTPException(
-                    status_code=400, 
-                    detail=f"Row {sno} in Receipts has project_id={raw_project_id}, but this ID does not exist in your registered Projects. Please add it in Setup first."
-                )
+        data_to_insert.append({
+            "sno"              : sno,
+            "supplier_id"      : raw_supplier_id,
+            "component_id"     : raw_component_id,
+            "quantity_received": _safe_int(row, "quantity_received"),
+            "received_date"    : _safe_datetime(row, "received_date"),
+            "project_id"       : raw_project_id,
+            "component_name"   : str(row["component_name"]),
+            "upload_id"        : upload_id,
+            "user_id"          : user_id,
+        })
+        sno += 1
 
-            conn.execute(insert_sql, {
-                "sno"              : sno,              # ← 1,2,3...N per file
-                "supplier_id"      : raw_supplier_id,
-                "component_id"     : raw_component_id,
-                "quantity_received": _safe_int(row, "quantity_received"),
-                "received_date"    : _safe_datetime(row, "received_date"),
-                "project_id"       : raw_project_id,
-                "component_name"   : str(row["component_name"]),
-                "upload_id"        : upload_id,        # ← same for all rows
-                "user_id"          : user_id,
-            })
-            sno   += 1
-            count += 1
+    if data_to_insert:
+        with engine.begin() as conn:
+            conn.execute(insert_sql, data_to_insert)
 
-    return upload_id, count
+    return upload_id, len(data_to_insert)
 
 
 # ─── Endpoint ─────────────────────────────────────────────────────────────────
