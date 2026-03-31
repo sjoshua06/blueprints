@@ -28,7 +28,10 @@ function ProgressBar({ value, max = 100, colorClass = "success" }) {
 
 export default function SupplierRisk() {
   const [loading, setLoading] = useState(false);
-  const [results, setResults] = useState(null);
+  const [results, setResults] = useState(() => {
+    const saved = sessionStorage.getItem("supplierRiskData");
+    return saved ? JSON.parse(saved) : null;
+  });
   const [error, setError] = useState(null);
 
   // Modal State
@@ -41,6 +44,7 @@ export default function SupplierRisk() {
     try {
       const resp = await predictAllSuppliersRisk();
       setResults(resp.data);
+      sessionStorage.setItem("supplierRiskData", JSON.stringify(resp.data));
     } catch (err) {
       setError(err.message);
     } finally {
