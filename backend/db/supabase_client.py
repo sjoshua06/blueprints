@@ -69,5 +69,8 @@ class TableQuery:
             with urllib.request.urlopen(req) as r:
                 data = json.loads(r.read())
             return type("R", (), {"data": data})()
-
 supabase = SimpleSupabase(SUPABASE_URL, SUPABASE_KEY)
+
+# Official client for Storage operations
+from supabase import create_client, Client
+official_supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
