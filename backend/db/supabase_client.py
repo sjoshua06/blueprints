@@ -44,8 +44,24 @@ class TableQuery:
         self._upsert = data
         return self
 
+    def delete(self):
+        self._delete = True
+        return self
+
     def execute(self):
-        if self._upsert is not None:
+        if hasattr(self, '_delete') and self._delete:
+            params = {}
+            params.update(self.filters)
+            query = urllib.parse.urlencode(params)
+            url   = f"{self.url}/rest/v1/{self.table}?{query}"
+            req   = urllib.request.Request(url, headers=self.headers, method="DELETE")
+            try:
+                with urllib.request.urlopen(req) as r:
+                    data = json.loads(r.read()) if r.length else []
+            except urllib.error.HTTPError as e:
+                pass
+            return type("R", (), {"data": []})()
+        elif self._upsert is not None:
             url     = f"{self.url}/rest/v1/{self.table}"
             payload = json.dumps(self._upsert).encode("utf-8")
             headers = {

@@ -7,66 +7,87 @@ import os
 from db.supabase_client import supabase
 
 def get_data(user_id: str):
-    print("Fetching inventory and receipts...")
+    print(f"Fetching inventory and receipts for user {user_id}...")
     inventory_res = supabase.table("inventory").select("*").eq("user_id", user_id).execute()
     receipts_res = supabase.table("supplier_receipts").select("*").eq("user_id", user_id).execute()
+    components_res = supabase.table("components").select("*").eq("user_id", user_id).execute()
     
     df_inventory = pd.DataFrame(inventory_res.data)
     df_receipts = pd.DataFrame(receipts_res.data)
+    df_components = pd.DataFrame(components_res.data)
     
-    return df_inventory, df_receipts
+    return df_inventory, df_receipts, df_components
 
 def forecast_component_stock(component_id, df_receipts, df_inventory_row, forecast_days=90):
     comp_receipts = df_receipts[df_receipts["component_id"] == component_id].copy()
-    if comp_receipts.empty:
-        return None
-        
-    comp_receipts["received_date"] = pd.to_datetime(comp_receipts["received_date"]).dt.normalize()
-    comp_receipts = comp_receipts.sort_values("received_date")
-
-    if len(comp_receipts) < 2:
-        return None
-
-    current_stock     = float(df_inventory_row["stock_quantity"])
+    
+    current_stock     = float(df_inventory_row.get("stock_quantity", 0))
     daily_consumption = float(df_inventory_row.get("daily_consumption", 2.5))
+    reorder_val       = float(df_inventory_row.get("reorder_level", 0)) if pd.notna(df_inventory_row.get("reorder_level", 0)) else 0
+    end_date          = pd.Timestamp.now().normalize()
+    
+    # === Prophet Time Series Forecasting ===
+    if not comp_receipts.empty and len(comp_receipts) >= 5:
+        comp_receipts["received_date"] = pd.to_datetime(comp_receipts["received_date"]).dt.normalize()
+        comp_receipts = comp_receipts.sort_values("received_date")
 
-    # Vectorized historical stock calculation
-    start_date = comp_receipts["received_date"].min()
-    end_date = pd.Timestamp.now().normalize()
-    date_range = pd.date_range(start=start_date, end=end_date, freq="D")
-    
-    # 1. Sum receipts by date
-    daily_receipts = comp_receipts.groupby("received_date")["quantity_received"].sum().reindex(date_range, fill_value=0)
-    
-    # 2. Calculate stock backwards using vectorized cumsum
-    # Stock[i] = Stock[i+1] + consumption - receipts[i]
-    diffs = (daily_consumption - daily_receipts)
-    
-    # We want to sum diffs from i to N-1 (excluding index N/today)
-    diffs_to_add = diffs.iloc[:-1].iloc[::-1].cumsum().iloc[::-1].reindex(date_range, fill_value=0)
-    
-    stock_values = (current_stock + diffs_to_add).clip(lower=0)
-    
-    prophet_df = pd.DataFrame({"ds": date_range, "y": stock_values.values}).dropna()
+        start_date = comp_receipts["received_date"].min()
+        date_range = pd.date_range(start=start_date, end=end_date, freq="D")
+        
+        daily_receipts = comp_receipts.groupby("received_date")["quantity_received"].sum().reindex(date_range, fill_value=0)
+        diffs = (daily_consumption - daily_receipts)
+        diffs_to_add = diffs.iloc[:-1].iloc[::-1].cumsum().iloc[::-1].reindex(date_range, fill_value=0)
+        stock_values = (current_stock + diffs_to_add).clip(lower=0)
+        
+        prophet_df = pd.DataFrame({"ds": date_range, "y": stock_values.values}).dropna()
 
-    # Faster Prophet configuration
-    model = Prophet(
-        daily_seasonality=False, 
-        weekly_seasonality=True,
-        yearly_seasonality=False, 
-        changepoint_prior_scale=0.05,
-        interval_width=0.80
-    )
-    model.fit(prophet_df)
+        model = Prophet(
+            daily_seasonality=False, 
+            weekly_seasonality=True,
+            yearly_seasonality=False, 
+            changepoint_prior_scale=0.05,
+            interval_width=0.80
+        )
+        model.fit(prophet_df)
+        future   = model.make_future_dataframe(periods=forecast_days)
+        forecast = model.predict(future)
+        
+        future_forecast = forecast[forecast["ds"] > end_date]
+        stockout_rows   = future_forecast[future_forecast["yhat"] <= 0]
+        reorder_rows    = future_forecast[future_forecast["yhat"] <= reorder_val]
 
-    future          = model.make_future_dataframe(periods=forecast_days)
-    forecast        = model.predict(future)
+        return {
+            "component_id":            component_id,
+            "forecast":                forecast,
+            "predicted_stockout_date": stockout_rows["ds"].min() if not stockout_rows.empty else None,
+            "predicted_reorder_date":  reorder_rows["ds"].min()  if not reorder_rows.empty  else None,
+            "forecast_90d_min_stock":  round(future_forecast["yhat"].min(), 1) if not future_forecast.empty else 0,
+            "confidence":              min(0.95, 0.5 + (len(comp_receipts) / 100))
+        }
+
+    # === Fallback Linear Deterministic Forecasting (for insufficient data) ===
+    # Project straight line from current_stock downwards by daily_consumption
+    start_date = end_date - pd.Timedelta(days=7) # simulate 7 days of past stability
+    date_range = pd.date_range(start=start_date, end=end_date + pd.Timedelta(days=forecast_days), freq="D")
     
-    # Extract results
+    preds = []
+    for d in date_range:
+        if d <= end_date:
+            preds.append(current_stock)
+        else:
+            days_out = (d - end_date).days
+            projected = current_stock - (daily_consumption * days_out)
+            preds.append(projected)
+            
+    forecast = pd.DataFrame({
+        "ds": date_range,
+        "yhat": preds,
+        "yhat_lower": [p * 0.9 for p in preds],
+        "yhat_upper": [p * 1.1 for p in preds]
+    })
+    
     future_forecast = forecast[forecast["ds"] > end_date]
     stockout_rows   = future_forecast[future_forecast["yhat"] <= 0]
-    
-    reorder_val     = float(df_inventory_row.get("reorder_level", 0)) if not pd.isna(df_inventory_row.get("reorder_level")) else 0
     reorder_rows    = future_forecast[future_forecast["yhat"] <= reorder_val]
 
     return {
@@ -74,7 +95,8 @@ def forecast_component_stock(component_id, df_receipts, df_inventory_row, foreca
         "forecast":                forecast,
         "predicted_stockout_date": stockout_rows["ds"].min() if not stockout_rows.empty else None,
         "predicted_reorder_date":  reorder_rows["ds"].min()  if not reorder_rows.empty  else None,
-        "forecast_90d_min_stock":  round(future_forecast["yhat"].min(), 1) if not future_forecast.empty else 0
+        "forecast_90d_min_stock":  round(future_forecast["yhat"].min(), 1) if not future_forecast.empty else 0,
+        "confidence":              0.2  # low confidence due to fallback
     }
 
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -88,26 +110,46 @@ def _forecast_worker(args):
         print(f"Error forecasting for component {cid}: {e}")
         return None
 
-def run_prophet_pipeline(user_id: str):
-    df_inventory, df_receipts = get_data(user_id)
-    if df_inventory.empty or df_receipts.empty:
-        return {"status": "error", "message": "No inventory or receipts data found."}
-        
-    # Filter receipts count per component
-    receipt_counts = df_receipts.groupby("component_id").size()
-    eligible_cids = receipt_counts[receipt_counts >= 2].index.tolist()
+def _build_default_inventory_row(component_row):
+    """Build a default inventory-like Series for components not in inventory table."""
+    return pd.Series({
+        "component_id": component_row["component_id"],
+        "stock_quantity": 0,
+        "daily_consumption": 2.5,
+        "reorder_level": 0,
+    })
 
-    # Prepare tasks for parallel execution
+def run_prophet_pipeline(user_id: str):
+    df_inventory, df_receipts, df_components = get_data(user_id)
+    if df_receipts.empty:
+        return {"status": "error", "message": "No receipts data found."}
+    if df_components.empty:
+        return {"status": "error", "message": "No components found for this user."}
+
+    # Use ALL component IDs from the components table
+    all_component_ids = df_components["component_id"].unique().tolist()
+    
+    # Prepare tasks — use inventory if available, otherwise use defaults
     tasks = []
-    for cid in eligible_cids:
-        inv_rows = df_inventory[df_inventory["component_id"] == cid]
+    for cid in all_component_ids:
+        if not df_inventory.empty:
+            inv_rows = df_inventory[df_inventory["component_id"] == cid]
+        else:
+            inv_rows = pd.DataFrame()
+        
         if not inv_rows.empty:
             tasks.append((cid, df_receipts, inv_rows.iloc[0]))
+        else:
+            # Component has receipts but no inventory entry — use defaults
+            comp_rows = df_components[df_components["component_id"] == cid]
+            if not comp_rows.empty:
+                default_row = _build_default_inventory_row(comp_rows.iloc[0])
+                tasks.append((cid, df_receipts, default_row))
 
     forecast_results = []
     
     # Run in parallel (Prophet is CPU intensive)
-    max_workers = min(os.cpu_count() or 4, len(tasks))
+    max_workers = min(os.cpu_count() or 4, max(len(tasks), 1))
     if tasks:
         print(f"🚀 Starting parallel forecasting for {len(tasks)} components with {max_workers} workers...")
         with ProcessPoolExecutor(max_workers=max_workers) as executor:
@@ -119,6 +161,9 @@ def run_prophet_pipeline(user_id: str):
     updates = []
     now_str = datetime.now().isoformat()
     
+    # Track which components got a prophet forecast so we don't duplicate
+    forecasted_cids = set()
+
     for res in forecast_results:
         cid = res["component_id"]
         so_date = res["predicted_stockout_date"]
@@ -155,26 +200,43 @@ def run_prophet_pipeline(user_id: str):
         })
         
     if updates:
-        # Supabase upsert handles batching naturally
+        # Delete old scoped predictions to bypass 409 unique constraint errors during upsert
+        try:
+            supabase.table("internal_risk_predictions").delete().eq("user_id", user_id).execute()
+        except Exception:
+            pass
+        
         supabase.table("internal_risk_predictions").upsert(updates).execute()
-        return {"status": "success", "forecasted": len(updates), "eligible": len(eligible_cids)}
+        return {
+            "status": "success",
+            "forecasted": len(updates),
+            "total_components": len(df_components)
+        }
     else:
-        return {"status": "success", "forecasted": 0, "eligible": len(eligible_cids), "message": "No new predictions added."}
+        return {"status": "success", "forecasted": 0, "message": "No new predictions added."}
 
 def get_prophet_plot_data(component_id: int, user_id: str):
-    df_inventory, df_receipts = get_data(user_id)
-    if df_inventory.empty or df_receipts.empty:
-        return {"status": "error", "message": "No inventory or receipts data found."}
-        
-    inv_rows = df_inventory[df_inventory["component_id"] == component_id]
-    if inv_rows.empty:
-        return {"status": "error", "message": "Component not found in inventory."}
-        
-    inv_row = inv_rows.iloc[0]
+    df_inventory, df_receipts, df_components = get_data(user_id)
+    if df_receipts.empty:
+        return {"status": "error", "message": "No receipts data found."}
+
+    # Try inventory first, fall back to defaults from components table
+    inv_row = None
+    if not df_inventory.empty:
+        inv_rows = df_inventory[df_inventory["component_id"] == component_id]
+        if not inv_rows.empty:
+            inv_row = inv_rows.iloc[0]
+    
+    if inv_row is None:
+        comp_rows = df_components[df_components["component_id"] == component_id]
+        if comp_rows.empty:
+            return {"status": "error", "message": "Component not found."}
+        inv_row = _build_default_inventory_row(comp_rows.iloc[0])
+
     result = forecast_component_stock(component_id, df_receipts, inv_row)
     
     if not result:
-        return {"status": "error", "message": "Not enough historic data (receipts < 2) to generate Prophet forecast."}
+        return {"status": "error", "message": "Not enough historic data (receipts < 5) to generate Prophet forecast."}
         
     forecast = result["forecast"]
     
@@ -192,13 +254,14 @@ def get_prophet_plot_data(component_id: int, user_id: str):
             "upper_bound": round(max(0, row["yhat_upper"]), 2)
         })
         
-    reorder_val = inv_row["reorder_level"] if "reorder_level" in inv_row and not pd.isna(inv_row["reorder_level"]) else 0
+    reorder_val = inv_row.get("reorder_level", 0)
+    reorder_val = float(reorder_val) if pd.notna(reorder_val) else 0.0
     return {
         "status": "success",
         "component_id": component_id,
-        "reorder_level": float(reorder_val),
+        "reorder_level": reorder_val,
         "timeseries": timeseries
     }
 
 if __name__ == "__main__":
-    print(run_prophet_pipeline())
+    print(run_prophet_pipeline("test_user"))

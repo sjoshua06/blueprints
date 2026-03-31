@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends
 from db.supabase_client import supabase
+from auth.dependencies import get_current_user_id
 from services.internal_risk_service import (
     get_all_predictions,
     get_prediction_by_component,
