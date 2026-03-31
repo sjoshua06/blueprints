@@ -41,6 +41,7 @@ matplotlib==3.10.8
 mdurl==0.1.2
 mmh3==5.2.1
 multidict==6.7.1
+nltk==3.9.4
 numpy==2.2.6
 openpyxl==3.1.5
 packaging==26.0

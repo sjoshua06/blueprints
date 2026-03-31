@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy import text
 
 from db.database import engine
-from auth.dependencies import get_current_user_id
+from auth import get_current_user_id
 
 router = APIRouter(prefix="/api/dashboard", tags=["Dashboard"])
 
