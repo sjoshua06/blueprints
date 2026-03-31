@@ -6,10 +6,10 @@ import os
 
 from db.supabase_client import supabase
 
-def get_data():
+def get_data(user_id: str):
     print("Fetching inventory and receipts...")
-    inventory_res = supabase.table("inventory").select("*").execute()
-    receipts_res = supabase.table("supplier_receipts").select("*").execute()
+    inventory_res = supabase.table("inventory").select("*").eq("user_id", user_id).execute()
+    receipts_res = supabase.table("supplier_receipts").select("*").eq("user_id", user_id).execute()
     
     df_inventory = pd.DataFrame(inventory_res.data)
     df_receipts = pd.DataFrame(receipts_res.data)
@@ -24,7 +24,7 @@ def forecast_component_stock(component_id, df_receipts, df_inventory_row, foreca
     comp_receipts["received_date"] = pd.to_datetime(comp_receipts["received_date"]).dt.normalize()
     comp_receipts = comp_receipts.sort_values("received_date")
 
-    if len(comp_receipts) < 5:
+    if len(comp_receipts) < 2:
         return None
 
     current_stock     = float(df_inventory_row["stock_quantity"])
@@ -88,14 +88,14 @@ def _forecast_worker(args):
         print(f"Error forecasting for component {cid}: {e}")
         return None
 
-def run_prophet_pipeline():
-    df_inventory, df_receipts = get_data()
+def run_prophet_pipeline(user_id: str):
+    df_inventory, df_receipts = get_data(user_id)
     if df_inventory.empty or df_receipts.empty:
         return {"status": "error", "message": "No inventory or receipts data found."}
         
     # Filter receipts count per component
     receipt_counts = df_receipts.groupby("component_id").size()
-    eligible_cids = receipt_counts[receipt_counts >= 5].index.tolist()
+    eligible_cids = receipt_counts[receipt_counts >= 2].index.tolist()
 
     # Prepare tasks for parallel execution
     tasks = []
@@ -143,6 +143,7 @@ def run_prophet_pipeline():
         
         updates.append({
             "component_id": int(cid),
+            "user_id": user_id,
             "risk_level": risk_level,
             "confidence": confidence,
             "days_until_stockout": days_until if days_until != -1 else 999,
@@ -160,8 +161,8 @@ def run_prophet_pipeline():
     else:
         return {"status": "success", "forecasted": 0, "eligible": len(eligible_cids), "message": "No new predictions added."}
 
-def get_prophet_plot_data(component_id: int):
-    df_inventory, df_receipts = get_data()
+def get_prophet_plot_data(component_id: int, user_id: str):
+    df_inventory, df_receipts = get_data(user_id)
     if df_inventory.empty or df_receipts.empty:
         return {"status": "error", "message": "No inventory or receipts data found."}
         
@@ -173,7 +174,7 @@ def get_prophet_plot_data(component_id: int):
     result = forecast_component_stock(component_id, df_receipts, inv_row)
     
     if not result:
-        return {"status": "error", "message": "Not enough historic data (receipts < 5) to generate Prophet forecast."}
+        return {"status": "error", "message": "Not enough historic data (receipts < 2) to generate Prophet forecast."}
         
     forecast = result["forecast"]
     
