@@ -6,8 +6,14 @@ import { PartyPopper, Mail } from "lucide-react";
 export default function BomAnalysis() {
   const [bomFile, setBomFile] = useState(null);
   const [receiptFile, setReceiptFile] = useState(null);
-  const [status, setStatus] = useState("idle"); // idle | analyzing | done | error
-  const [results, setResults] = useState(null);
+  const [status, setStatus] = useState(() => {
+    const saved = sessionStorage.getItem("bomAnalysisStatus");
+    return saved ? saved : "idle";
+  });
+  const [results, setResults] = useState(() => {
+    const saved = sessionStorage.getItem("bomAnalysisResults");
+    return saved ? JSON.parse(saved) : null;
+  });
   const [error, setError] = useState(null);
   const [mailStatus, setMailStatus] = useState({}); // { supplierName: "sending" | "sent" | "error" }
 
@@ -52,15 +58,19 @@ export default function BomAnalysis() {
   async function handleAnalyze() {
     if (!bomFile || !receiptFile) return;
     setStatus("analyzing");
+    sessionStorage.setItem("bomAnalysisStatus", "analyzing");
     setError(null);
     try {
       const resp = await analyzeBom(bomFile, receiptFile);
       setResults(resp);
+      sessionStorage.setItem("bomAnalysisResults", JSON.stringify(resp));
       localStorage.setItem("globalSupplierState", JSON.stringify(resp.analysis || []));
       setStatus("done");
+      sessionStorage.setItem("bomAnalysisStatus", "done");
     } catch (err) {
       setError(err.message);
       setStatus("error");
+      sessionStorage.setItem("bomAnalysisStatus", "error");
     }
   }
 

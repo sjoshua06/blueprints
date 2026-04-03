@@ -128,6 +128,8 @@ def predict_all_suppliers(user_id: str = Depends(get_current_user_id)):
                 "defect_rate":        features["defect_rate"],
                 "on_time_delivery_rate": features["on_time_delivery_rate"],
                 "avg_lead_time_days": features["avg_lead_time_days"],
+                "adaptive_weights":   risk_result.get("adaptive_weights", {}),
+                "bom_summary":        risk_result.get("bom_summary", {}),
                 **risk_result,
             })
 

@@ -43,6 +43,8 @@ class RiskPredictionResponse(BaseModel):
     internal_risk_score: float = Field(..., description="Internal formula score (0–100)")
     external_risk_score: float = Field(..., description="News sentiment score (0–100)")
     factors: list[RiskFactor] = Field(default_factory=list, description="Contributing factors, ranked by impact")
+    adaptive_weights: dict = Field(default_factory=dict, description="The dynamic ML weights used")
+    bom_summary: dict = Field(default_factory=dict, description="Summary of the BOM history for this supplier")
     news_articles: list[NewsArticle] = Field(default_factory=list, description="Relevant news articles with sentiment")
 
 
@@ -61,6 +63,8 @@ class SupplierRiskResult(BaseModel):
     internal_risk_score: float
     external_risk_score: float
     factors: list[RiskFactor] = Field(default_factory=list)
+    adaptive_weights: dict = Field(default_factory=dict)
+    bom_summary: dict = Field(default_factory=dict)
     news_articles: list[NewsArticle] = Field(default_factory=list)
 
 
