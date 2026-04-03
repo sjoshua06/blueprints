@@ -9,13 +9,15 @@ import {
   Hexagon, 
   LogOut,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Mail
 } from "lucide-react";
 
 const NAV_ITEMS = [
   { to: "/dashboard", icon: <LayoutDashboard size={20} />, label: "Dashboard" },
   { to: "/bom-analysis", icon: <Microscope size={20} />, label: "BOM Analysis" },
   { to: "/supplier-risk", icon: <ShieldAlert size={20} />, label: "Supplier Risk" },
+  { to: "/supplier-intelligence", icon: <Mail size={20} />, label: "Supplier Intel" },
   { to: "/inventory-risk", icon: <PackageOpen size={20} />, label: "Inventory Risk" },
 ];
 

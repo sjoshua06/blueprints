@@ -80,6 +80,7 @@ def analyze_bom(bom_df, receipts_df, user_id=None):
                 c.component_id,
                 c.component_name,
                 s.supplier_name,
+                s.contact_email,
                 sc.unit_price,
                 sc.lead_time_days
             FROM components c
@@ -101,6 +102,7 @@ def analyze_bom(bom_df, receipts_df, user_id=None):
                     candidate_details[cid] = {"component_name": r.component_name, "suppliers": []}
                 candidate_details[cid]["suppliers"].append({
                     "supplier_name": str(r.supplier_name),
+                    "contact_email": str(r.contact_email) if r.contact_email else None,
                     "price": float(r.unit_price),
                     "lead_time_days": int(r.lead_time_days)
                 })

@@ -6,6 +6,7 @@ import AuthPage from "./pages/AuthPage";
 import SetupPage from "./pages/SetupPage";
 import InventoryDash from "./pages/InventoryDash";
 import BomAnalysis from "./pages/BomAnalysis";
+import SupplierIntelligence from "./pages/SupplierIntelligence";
 import SupplierRisk from "./pages/SupplierRisk";
 import InventoryRisk from "./pages/InventoryRisk";
 import Sidebar from "./components/Sidebar";
@@ -82,6 +83,7 @@ export default function App() {
             <Route element={<DashboardLayout />}>
               <Route path="/dashboard" element={<InventoryDash />} />
               <Route path="/bom-analysis" element={<BomAnalysis />} />
+              <Route path="/supplier-intelligence" element={<SupplierIntelligence />} />
               <Route path="/supplier-risk" element={<SupplierRisk />} />
               <Route path="/inventory-risk" element={<InventoryRisk />} />
             </Route>

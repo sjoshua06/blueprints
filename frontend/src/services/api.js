@@ -131,3 +131,25 @@ export function runProphetForecast() {
 export function getProphetForecastData(componentId) {
   return request(`/api/risk/forecast/${componentId}`);
 }
+
+/* ── Supplier Mailing Agent ───────────────────────────────────── */
+
+export function sendSupplierMailRequest(data) {
+  return request("/api/suppliers/mail-request", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export function processSupplierReply(data) {
+  return request("/api/suppliers/process-reply", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export function getSupplierInsights(componentId, componentName) {
+  return request(`/api/suppliers/insights/${componentId}?component_name=${encodeURIComponent(componentName)}`);
+}

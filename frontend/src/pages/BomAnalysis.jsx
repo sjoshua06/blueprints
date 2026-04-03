@@ -1,7 +1,7 @@
 import { useState } from "react";
 import FileUploader from "../components/FileUploader";
-import { analyzeBom } from "../services/api";
-import { PartyPopper } from "lucide-react";
+import { analyzeBom, sendSupplierMailRequest } from "../services/api";
+import { PartyPopper, Mail } from "lucide-react";
 
 export default function BomAnalysis() {
   const [bomFile, setBomFile] = useState(null);
@@ -9,6 +9,45 @@ export default function BomAnalysis() {
   const [status, setStatus] = useState("idle"); // idle | analyzing | done | error
   const [results, setResults] = useState(null);
   const [error, setError] = useState(null);
+  const [mailStatus, setMailStatus] = useState({}); // { supplierName: "sending" | "sent" | "error" }
+
+  async function handleMail(componentId, componentName, reqQty, supplierName, supplierEmail) {
+    setMailStatus(prev => ({ ...prev, [supplierName]: "sending" }));
+    try {
+      await sendSupplierMailRequest({
+        component_id: componentId,
+        component_name: componentName,
+        required_quantity: reqQty,
+        supplier_name: supplierName,
+        supplier_email: supplierEmail
+      });
+      
+      setMailStatus(prev => ({ ...prev, [supplierName]: "sent" }));
+    } catch (e) {
+      setMailStatus(prev => ({ ...prev, [supplierName]: "error" }));
+    }
+  }
+
+  const [globalInsights, setGlobalInsights] = useState(null);
+  const [globalInsightsLoading, setGlobalInsightsLoading] = useState(false);
+
+  async function handleExtractGlobalInsights() {
+    if (!results || !results.analysis) return;
+    setGlobalInsightsLoading(true);
+    const aggregated = [];
+    for (const item of results.analysis) {
+      if (item.missing > 0) {
+        try {
+          const data = await getSupplierInsights(item.component_id, item.component);
+          aggregated.push({ componentId: item.component_id, componentName: item.component, data });
+        } catch (e) {
+             console.error("Insight Error:", e);
+        }
+      }
+    }
+    setGlobalInsights(aggregated);
+    setGlobalInsightsLoading(false);
+  }
 
   async function handleAnalyze() {
     if (!bomFile || !receiptFile) return;
@@ -17,6 +56,7 @@ export default function BomAnalysis() {
     try {
       const resp = await analyzeBom(bomFile, receiptFile);
       setResults(resp);
+      localStorage.setItem("globalSupplierState", JSON.stringify(resp.analysis || []));
       setStatus("done");
     } catch (err) {
       setError(err.message);
@@ -116,33 +156,58 @@ export default function BomAnalysis() {
                       </h4>
                       
                       {!item.compatible_components || item.compatible_components.length === 0 ? (
-                        <p style={{ color: "#9CA3AF", fontStyle: "italic", fontSize: "0.9rem" }}>No vector-compatible alternative components found in the database.</p>
+                        <p style={{ color: "#9CA3AF", fontStyle: "italic", fontSize: "0.9rem", marginBottom: "1rem" }}>No vector-compatible alternative components found in the database.</p>
                       ) : (
-                        <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", marginBottom: "1.5rem" }}>
                           {item.compatible_components.map((alt, altIdx) => (
-                            <div key={altIdx} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.75rem 1rem", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "6px", backgroundColor: "rgba(255,255,255,0.02)" }}>
-                              <div>
-                                <div style={{ fontWeight: "500", color: "#F3F4F6" }}>{alt.component_name}</div>
-                                {alt.suppliers && Array.isArray(alt.suppliers) && alt.suppliers.length > 0 && (
-                                  <div style={{ fontSize: "0.85rem", color: "#9CA3AF", marginTop: "0.4rem" }}>
-                                    <span style={{color: "#D1D5DB"}}>Suppliers:</span> {alt.suppliers.map(s => `${s.supplier_name} ($${s.price.toFixed(2)}, ${s.lead_time_days}d lead)`).join(' | ')}
-                                  </div>
-                                )}
-                              </div>
-                              <div style={{ textAlign: "right" }}>
+                            <div key={altIdx} style={{ padding: "0.75rem 1rem", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "6px", backgroundColor: "rgba(255,255,255,0.02)" }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "0.5rem" }}>
+                                <div style={{ fontWeight: "500", color: "#F3F4F6", fontSize: "1.05rem" }}>{alt.component_name}</div>
                                 <div style={{ fontWeight: "bold", color: "#34D399", fontSize: "0.95rem" }}>
                                   {alt.compatibility_score ? parseFloat(alt.compatibility_score).toFixed(1) : 0}% Match
                                 </div>
                               </div>
+                              {alt.suppliers && Array.isArray(alt.suppliers) && alt.suppliers.length > 0 && (
+                                <div style={{ fontSize: "0.85rem", color: "#9CA3AF", display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+                                  <div style={{color: "#D1D5DB", marginBottom: "0.2rem"}}>Suppliers:</div>
+                                  {alt.suppliers.map((s, sIdx) => {
+                                    const supplierEmail = s.contact_email || `sales@${s.supplier_name.toLowerCase().replace(/\s+/g,'')}.com`;
+                                    return (
+                                      <div key={sIdx} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", backgroundColor: "rgba(0,0,0,0.1)", padding: "0.5rem", borderRadius: "4px" }}>
+                                        <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+                                          <span style={{ fontWeight: "500", color: "#E5E7EB" }}>{s.supplier_name}</span>
+                                          <span style={{ color: "#9CA3AF" }}>${s.price.toFixed(2)} | {s.lead_time_days}d lead</span>
+                                        </div>
+                                        <button 
+                                          onClick={() => handleMail(item.component_id, item.component, item.missing, s.supplier_name, supplierEmail)}
+                                          disabled={mailStatus[s.supplier_name] === "sending" || mailStatus[s.supplier_name] === "sent"}
+                                          style={{ 
+                                            display: "flex", alignItems: "center", gap: "0.35rem", padding: "0.35rem 0.6rem", fontSize: "0.75rem", fontWeight: "600",
+                                            backgroundColor: mailStatus[s.supplier_name] === "sent" ? "rgba(16, 185, 129, 0.15)" : "rgba(59, 130, 246, 0.15)", 
+                                            color: mailStatus[s.supplier_name] === "sent" ? "#34D399" : "#60A5FA", 
+                                            border: `1px solid ${mailStatus[s.supplier_name] === "sent" ? "rgba(16,185,129,0.3)" : "rgba(59,130,246,0.3)"}`, 
+                                            borderRadius: "4px", cursor: "pointer", transition: "all 0.2s" 
+                                          }}
+                                        >
+                                          <Mail size={14} /> 
+                                          {mailStatus[s.supplier_name] === "sending" ? "Sending RFQ..." : mailStatus[s.supplier_name] === "sent" ? "RFQ Sent" : "Request Quote"}
+                                        </button>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
                             </div>
                           ))}
                         </div>
                       )}
+
                     </div>
                   </div>
                 ))}
               </div>
             )}
+            
           </div>
         )}
       </div>
