@@ -8,6 +8,7 @@ from email.mime.multipart import MIMEMultipart
 import imaplib
 import email
 from email.header import decode_header
+from email.utils import parseaddr
 from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
@@ -52,10 +53,11 @@ def send_real_email(supplier_name: str, supplier_email: str, component_name: str
     msg['Subject'] = subject
     msg.attach(MIMEText(body, 'plain'))
 
+    pwd_clean = pwd or ""
     try:
         server = smtplib.SMTP(os.getenv("EMAIL_HOST", "smtp.gmail.com"), int(os.getenv("EMAIL_PORT", 587)))
         server.starttls()
-        server.login(addr, pwd)
+        server.login(addr or "", pwd_clean)
         server.send_message(msg)
         server.quit()
         logger.info(f"Successfully sent RFQ email to {supplier_email}")
@@ -78,9 +80,10 @@ def fetch_real_inbox_replies(component_name: str):
         logger.warning("No email credentials found. Cannot fetch real emails.")
         return replies
         
+    pwd_clean = pwd or ""
     try:
         mail = imaplib.IMAP4_SSL(os.getenv("IMAP_HOST", "imap.gmail.com"))
-        mail.login(addr, pwd)
+        mail.login(addr or "", pwd_clean)
         mail.select("inbox")
 
         # Search for emails mentioning the component name
@@ -99,22 +102,27 @@ def fetch_real_inbox_replies(component_name: str):
                         sender = from_header[0]
                         if isinstance(sender, bytes):
                             sender = sender.decode(from_header[1] or 'utf-8')
+                        
+                        # Extract only the name part from "Name <email@domain.com>"
+                        real_name, email_addr = parseaddr(sender)
+                        display_name = real_name if real_name else email_addr
 
                         # Extract text payload
-                        content = ""
+                        content_list = []
                         if msg.is_multipart():
                             for part in msg.walk():
                                 if part.get_content_type() == "text/plain":
                                     payload = part.get_payload(decode=True)
                                     if isinstance(payload, bytes):
-                                        content += payload.decode('utf-8', errors='ignore')
+                                        content_list.append(payload.decode('utf-8', errors='ignore'))
                         else:
                             payload = msg.get_payload(decode=True)
                             if isinstance(payload, bytes):
-                                content = payload.decode('utf-8', errors='ignore')
+                                content_list.append(payload.decode('utf-8', errors='ignore'))
 
+                        content = "".join(content_list)
                         replies.append({
-                            "supplier_name": sender,
+                            "supplier_name": display_name,
                             "email_content": content.strip()
                         })
 
@@ -147,16 +155,16 @@ def analyze_supplier_replies(component_name: str, replies: list):
     
     user_prompt = f"Component required: {component_name}\n\nHere are the supplier replies:\n"
     for idx, r in enumerate(replies):
-        user_prompt += f"--- Supplier {idx + 1}: {r['supplier_name']} ---\nContent: \"{r['email_content']}\"\n\n"
+        user_prompt += f"--- ID {idx + 1} ---\nSupplier Name: {r['supplier_name']}\nEmail Content: \"{r['email_content']}\"\n\n"
         
     user_prompt += (
         "Analyze the emails and output pure JSON and nothing else. Output format must exactly match:\n"
         "{\n"
         "  \"insights\": [\n"
-        "    {\"supplier_name\": \"Name\", \"price\": 1.23, \"lead_time_days\": 5},\n"
+        "    {\"supplier_name\": \"Use the exact supplier name from the 'Supplier Name' field above\", \"price\": 1.23, \"lead_time_days\": 5},\n"
         "    ...\n"
         "  ],\n"
-        "  \"recommended_supplier\": \"Best Supplier Name\",\n"
+        "  \"recommended_supplier\": \"Exact best supplier name as provided in the input\",\n"
         "  \"reason\": \"Short explanation of why they are the best.\"\n"
         "}"
     )
