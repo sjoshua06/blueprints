@@ -23,12 +23,13 @@ def create_profile(
 
     profile_query = text("""
         INSERT INTO profiles
-        (user_id, full_name, email, company_name, role)
+        (user_id, full_name, email, company_name, role, destination_port)
         VALUES
-        (:user_id, :full_name, :email, :company_name, :role)
+        (:user_id, :full_name, :email, :company_name, :role, :destination_port)
         ON CONFLICT (user_id) DO UPDATE SET
             full_name = EXCLUDED.full_name,
-            company_name = EXCLUDED.company_name
+            company_name = EXCLUDED.company_name,
+            destination_port = EXCLUDED.destination_port
     """)
 
     try:

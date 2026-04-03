@@ -10,6 +10,7 @@ class ProfileCreate(BaseModel):
     email: EmailStr
     company_name: Optional[str] = None
     role: Optional[str] = "member"
+    destination_port: Optional[str] = None
 
 
 class ProfileResponse(BaseModel):
@@ -19,3 +20,4 @@ class ProfileResponse(BaseModel):
     email: EmailStr
     company_name: Optional[str]
     role: str
+    destination_port: Optional[str] = None

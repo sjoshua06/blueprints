@@ -9,6 +9,7 @@ import BomAnalysis from "./pages/BomAnalysis";
 import SupplierIntelligence from "./pages/SupplierIntelligence";
 import SupplierRisk from "./pages/SupplierRisk";
 import InventoryRisk from "./pages/InventoryRisk";
+import ShippingDashboard from "./pages/ShippingDashboard";
 import Sidebar from "./components/Sidebar";
 
 export const AuthContext = createContext(null);
@@ -86,6 +87,7 @@ export default function App() {
               <Route path="/supplier-intelligence" element={<SupplierIntelligence />} />
               <Route path="/supplier-risk" element={<SupplierRisk />} />
               <Route path="/inventory-risk" element={<InventoryRisk />} />
+              <Route path="/shipping" element={<ShippingDashboard />} />
             </Route>
           </Route>
 

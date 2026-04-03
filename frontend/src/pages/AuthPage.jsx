@@ -14,6 +14,7 @@ export default function AuthPage() {
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [companyName, setCompanyName] = useState("");
+  const [destinationPort, setDestinationPort] = useState("");
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -36,6 +37,7 @@ export default function AuthPage() {
             email,
             company_name: companyName || null,
             role: "member",
+            destination_port: destinationPort || null,
           });
           navigate("/setup");
         } else {
@@ -97,6 +99,17 @@ export default function AuthPage() {
                   value={companyName}
                   onChange={(e) => setCompanyName(e.target.value)}
                   placeholder="Acme Corp (optional)"
+                />
+              </div>
+              <div className="form-group">
+                <label htmlFor="destinationPort">Destination Port / Place</label>
+                <input
+                  id="destinationPort"
+                  type="text"
+                  required
+                  value={destinationPort}
+                  onChange={(e) => setDestinationPort(e.target.value)}
+                  placeholder="e.g. Port of Mumbai, Chennai"
                 />
               </div>
             </>

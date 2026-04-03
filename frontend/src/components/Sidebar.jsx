@@ -10,7 +10,8 @@ import {
   LogOut,
   ChevronLeft,
   ChevronRight,
-  Mail
+  Mail,
+  Ship
 } from "lucide-react";
 
 const NAV_ITEMS = [
@@ -19,6 +20,7 @@ const NAV_ITEMS = [
   { to: "/supplier-risk", icon: <ShieldAlert size={20} />, label: "Supplier Risk" },
   { to: "/supplier-intelligence", icon: <Mail size={20} />, label: "Supplier Intel" },
   { to: "/inventory-risk", icon: <PackageOpen size={20} />, label: "Inventory Risk" },
+  { to: "/shipping", icon: <Ship size={20} />, label: "Shipping Intelligence" },
 ];
 
 export default function Sidebar() {
