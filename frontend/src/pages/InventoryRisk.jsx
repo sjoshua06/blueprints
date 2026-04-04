@@ -97,9 +97,15 @@ function ConfidenceBar({ value }) {
 /* ── Main Page ────────────────────────────────────────────────── */
 
 export default function InventoryRisk() {
-  const [predictions, setPredictions] = useState([]);
-  const [summary, setSummary] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [predictions, setPredictions] = useState(() => {
+    const saved = sessionStorage.getItem("ir_predictions");
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [summary, setSummary] = useState(() => {
+    const saved = sessionStorage.getItem("ir_summary");
+    return saved ? JSON.parse(saved) : null;
+  });
+  const [loading, setLoading] = useState(!sessionStorage.getItem("ir_predictions"));
   const [error, setError] = useState(null);
   const [activeFilter, setActiveFilter] = useState("ALL");
   const [search, setSearch] = useState("");
@@ -115,6 +121,8 @@ export default function InventoryRisk() {
       ]);
       setPredictions(predRes.data || []);
       setSummary(sumRes.summary || null);
+      sessionStorage.setItem("ir_predictions", JSON.stringify(predRes.data || []));
+      sessionStorage.setItem("ir_summary", JSON.stringify(sumRes.summary || null));
       setError(null);
     } catch (err) {
       setError(err.message);
@@ -124,7 +132,11 @@ export default function InventoryRisk() {
   }
 
   useEffect(() => {
-    loadData();
+    if (predictions.length === 0) {
+      loadData();
+    } else {
+      setLoading(false);
+    }
   }, []);
 
   async function handleForceForecast() {

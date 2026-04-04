@@ -4,7 +4,10 @@ import { getSupplierInsights } from "../services/api";
 
 export default function SupplierIntelligence() {
   const [globalInsightsLoading, setGlobalInsightsLoading] = useState(false);
-  const [globalInsights, setGlobalInsights] = useState(null);
+  const [globalInsights, setGlobalInsights] = useState(() => {
+    const saved = sessionStorage.getItem("si_globalInsights");
+    return saved ? JSON.parse(saved) : null;
+  });
   const [analysisState, setAnalysisState] = useState([]);
 
   useEffect(() => {
@@ -31,6 +34,7 @@ export default function SupplierIntelligence() {
         }
       }
       setGlobalInsights(insightsArray);
+      sessionStorage.setItem("si_globalInsights", JSON.stringify(insightsArray));
     } catch (e) {
       console.error("Failed to extract insights", e);
     } finally {

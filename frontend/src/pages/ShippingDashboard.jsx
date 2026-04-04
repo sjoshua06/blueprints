@@ -51,11 +51,14 @@ function parseRiskFactor(factor) {
 
 // ─────────────────────────────────────────────────────────────────
 export default function ShippingDashboard() {
-  const [data,      setData]      = useState(null);
-  const [loading,   setLoading]   = useState(true);
-  const [error,     setError]     = useState(null);
+  const [data, setData] = useState(() => {
+    const saved = sessionStorage.getItem("shipping_data");
+    return saved ? JSON.parse(saved) : null;
+  });
+  const [loading, setLoading] = useState(!sessionStorage.getItem("shipping_data"));
+  const [error, setError] = useState(null);
   const [uploading, setUploading] = useState(false);
-  const [selected,  setSelected]  = useState(null);   // selected shipment for drawer
+  const [selected, setSelected] = useState(null);   // selected shipment for drawer
   const fileInputRef = useRef(null);
 
   const fetchShippingData = async () => {
@@ -63,6 +66,7 @@ export default function ShippingDashboard() {
     try {
       const response = await apiRequest("/api/shipping/dashboard");
       setData(response);
+      sessionStorage.setItem("shipping_data", JSON.stringify(response));
     } catch (err) {
       setError(err.message);
     } finally {
@@ -70,7 +74,13 @@ export default function ShippingDashboard() {
     }
   };
 
-  useEffect(() => { fetchShippingData(); }, []);
+  useEffect(() => {
+    if (!data) {
+      fetchShippingData();
+    } else {
+      setLoading(false);
+    }
+  }, []);
 
   const handleFileUpload = async (event) => {
     const file = event.target.files[0];

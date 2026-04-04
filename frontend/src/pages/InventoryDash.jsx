@@ -10,17 +10,32 @@ import RiskBadge from "../components/RiskBadge";
 import { Cpu, Factory, Package, Link } from "lucide-react";
 
 export default function InventoryDash() {
-  const [summary, setSummary] = useState(null);
-  const [components, setComponents] = useState([]);
-  const [suppliers, setSuppliers] = useState([]);
-  const [inventory, setInventory] = useState([]);
-  const [activeTab, setActiveTab] = useState("components");
-  const [loading, setLoading] = useState(true);
+  const [summary, setSummary] = useState(() => {
+    const saved = sessionStorage.getItem("dash_summary");
+    return saved ? JSON.parse(saved) : null;
+  });
+  const [components, setComponents] = useState(() => {
+    const saved = sessionStorage.getItem("dash_components");
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [suppliers, setSuppliers] = useState(() => {
+    const saved = sessionStorage.getItem("dash_suppliers");
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [inventory, setInventory] = useState(() => {
+    const saved = sessionStorage.getItem("dash_inventory");
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [activeTab, setActiveTab] = useState(() => {
+    return sessionStorage.getItem("dash_activeTab") || "components";
+  });
+  const [loading, setLoading] = useState(!sessionStorage.getItem("dash_summary"));
   const [error, setError] = useState(null);
 
   useEffect(() => {
     async function load() {
       try {
+        setLoading(true);
         const [sum, comp, sup, inv] = await Promise.all([
           getDashboardSummary(),
           getDashboardComponents(),
@@ -31,13 +46,22 @@ export default function InventoryDash() {
         setComponents(comp);
         setSuppliers(sup);
         setInventory(inv);
+        sessionStorage.setItem("dash_summary", JSON.stringify(sum));
+        sessionStorage.setItem("dash_components", JSON.stringify(comp));
+        sessionStorage.setItem("dash_suppliers", JSON.stringify(sup));
+        sessionStorage.setItem("dash_inventory", JSON.stringify(inv));
       } catch (err) {
         setError(err.message);
       } finally {
         setLoading(false);
       }
     }
-    load();
+    
+    if (!summary) {
+      load();
+    } else {
+      setLoading(false);
+    }
   }, []);
 
   if (loading) {
@@ -160,7 +184,10 @@ export default function InventoryDash() {
             className={`dash-tab ${
               activeTab === tab.key ? "dash-tab--active" : ""
             }`}
-            onClick={() => setActiveTab(tab.key)}
+            onClick={() => {
+              setActiveTab(tab.key);
+              sessionStorage.setItem("dash_activeTab", tab.key);
+            }}
           >
             {tab.label}
             {tab.count != null && (
