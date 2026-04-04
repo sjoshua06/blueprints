@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate, Outlet } from "react-router-dom
 import { useState, useEffect, createContext } from "react";
 import { getSession, onAuthStateChange } from "./services/auth";
 
+import LandingPage from "./pages/LandingPage";
 import AuthPage from "./pages/AuthPage";
 import SetupPage from "./pages/SetupPage";
 import InventoryDash from "./pages/InventoryDash";
@@ -69,8 +70,14 @@ export default function App() {
                   ? <Navigate to="/setup" replace />
                   : <Navigate to="/dashboard" replace />
               ) : (
-                <AuthPage />
+                <LandingPage />
               )
+            }
+          />
+          <Route
+            path="/auth"
+            element={
+              session ? <Navigate to="/" replace /> : <AuthPage />
             }
           />
 

@@ -133,10 +133,13 @@ def predict_all_suppliers(user_id: str = Depends(get_current_user_id)):
                 **risk_result,
             })
 
-        # Step 3: Batch update DB using a new transaction
+        # Step 3: Batch update DB using chunked transactions to prevent statement timeouts
         if update_data:
-            with engine.begin() as conn:
-                conn.execute(text(update_sql), update_data)
+            chunk_size = 50
+            for i in range(0, len(update_data), chunk_size):
+                chunk = update_data[i:i + chunk_size]
+                with engine.begin() as conn:
+                    conn.execute(text(update_sql), chunk)
 
         return {
             "message": f"Successfully predicted risk for {len(results)} suppliers",
