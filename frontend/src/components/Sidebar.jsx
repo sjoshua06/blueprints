@@ -12,7 +12,8 @@ import {
   ChevronRight,
   Mail,
   Ship,
-  Globe
+  Globe,
+  Zap
 } from "lucide-react";
 
 const NAV_ITEMS = [
@@ -22,6 +23,7 @@ const NAV_ITEMS = [
   { to: "/supplier-intelligence", icon: <Mail size={20} />, label: "Supplier Intel" },
   { to: "/inventory-risk", icon: <PackageOpen size={20} />, label: "Inventory Risk" },
   { to: "/shipping", icon: <Ship size={20} />, label: "Shipping Intelligence" },
+  { to: "/final-risk", icon: <Zap size={20} />, label: "BOM Shock Predictor" },
 ];
 
 export default function Sidebar() {

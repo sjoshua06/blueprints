@@ -153,3 +153,24 @@ export function processSupplierReply(data) {
 export function getSupplierInsights(componentId, componentName) {
   return request(`/api/suppliers/insights/${componentId}?component_name=${encodeURIComponent(componentName)}`);
 }
+
+/* ── Final Risk (Agentic BOM Shock Predictor) ─────────────────── */
+
+export function getFinalRiskById(supplierId, userId) {
+  const params = userId ? `?user_id=${encodeURIComponent(userId)}` : "";
+  return request(`/api/final-risk/${supplierId}${params}`);
+}
+
+export function predictFinalRisk(data) {
+  return request("/api/final-risk/", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export function predictAllFinalRisk(userId) {
+  return request(`/api/final-risk/predict-all?user_id=${encodeURIComponent(userId)}`, {
+    method: "POST",
+  });
+}

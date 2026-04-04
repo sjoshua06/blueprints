@@ -11,6 +11,7 @@ import SupplierIntelligence from "./pages/SupplierIntelligence";
 import SupplierRisk from "./pages/SupplierRisk";
 import InventoryRisk from "./pages/InventoryRisk";
 import ShippingDashboard from "./pages/ShippingDashboard";
+import FinalRiskDashboard from "./pages/FinalRiskDashboard";
 import Sidebar from "./components/Sidebar";
 
 export const AuthContext = createContext(null);
@@ -95,6 +96,7 @@ export default function App() {
               <Route path="/supplier-risk" element={<SupplierRisk />} />
               <Route path="/inventory-risk" element={<InventoryRisk />} />
               <Route path="/shipping" element={<ShippingDashboard />} />
+              <Route path="/final-risk" element={<FinalRiskDashboard />} />
             </Route>
           </Route>
 

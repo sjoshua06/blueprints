@@ -9,6 +9,7 @@ from api.dashboard_router import router as dashboard_router
 from api.internal_risk_routes import router as internal_risk_router
 from api.supplier_router import router as supplier_router
 from api.shipping_routes import router as shipping_router
+from api.final_risk import router as final_risk_router
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="Supply Chain AI Backend")
@@ -28,3 +29,4 @@ app.include_router(dashboard_router)
 app.include_router(internal_risk_router)
 app.include_router(supplier_router, prefix="/api/suppliers")
 app.include_router(shipping_router)
+app.include_router(final_risk_router)
